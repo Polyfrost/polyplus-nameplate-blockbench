@@ -1,0 +1,12 @@
+{
+  "kind": "sprite",
+  "sprite": "clasp",
+  "of": "stone",
+  "anchor": "left",
+  "pivot": "left",
+  "offset": [
+    -5,
+    0
+  ],
+  "mirror": true
+}

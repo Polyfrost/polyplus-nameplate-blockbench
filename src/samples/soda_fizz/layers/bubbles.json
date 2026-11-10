@@ -1,0 +1,41 @@
+{
+  "kind": "emitter",
+  "sprites": [
+    "bubble",
+    "bead"
+  ],
+  "of": "soda",
+  "spawn": {
+    "shape": "line",
+    "edge": "top",
+    "offset": [
+      0,
+      0
+    ]
+  },
+  "rate": {
+    "every": 3,
+    "count": 1,
+    "jitter": 2
+  },
+  "lifetime": [
+    16,
+    28
+  ],
+  "velocity": {
+    "x": [
+      -0.1,
+      0.1
+    ],
+    "y": [
+      -0.9,
+      -0.5
+    ]
+  },
+  "wobble": {
+    "x": 1,
+    "y": 0,
+    "period": 12
+  },
+  "frames": "stretch"
+}

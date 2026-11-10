@@ -1,0 +1,44 @@
+{
+  "slots": [
+    {
+      "id": "plate",
+      "name": "Plate",
+      "ramp": [
+        "#F4E7C6",
+        "#EAD9B0"
+      ]
+    },
+    {
+      "id": "edge",
+      "name": "Edge",
+      "ramp": [
+        "#8C6A3F"
+      ]
+    },
+    {
+      "id": "shell",
+      "name": "Shell",
+      "ramp": [
+        "#7E3320",
+        "#CF6A2D",
+        "#F4B860"
+      ]
+    },
+    {
+      "id": "skin",
+      "name": "Skin",
+      "ramp": [
+        "#8DB863",
+        "#4F7538",
+        "#26361C"
+      ]
+    },
+    {
+      "id": "ink",
+      "name": "Name",
+      "ramp": [
+        "#3A2817"
+      ]
+    }
+  ]
+}

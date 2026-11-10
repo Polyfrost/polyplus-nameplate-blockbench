@@ -1,0 +1,46 @@
+{
+  "slots": [
+    {
+      "id": "sky",
+      "name": "Sky",
+      "ramp": [
+        "#12173A",
+        "#0F132E",
+        "#0B0F22"
+      ]
+    },
+    {
+      "id": "edge",
+      "name": "Edge",
+      "ramp": [
+        "#3C4A82"
+      ]
+    },
+    {
+      "id": "star",
+      "name": "Star",
+      "ramp": [
+        "#DCE6FF",
+        "#7E8CC8"
+      ]
+    },
+    {
+      "id": "curtain",
+      "name": "Curtain",
+      "ramp": [
+        "#23235C",
+        "#264A82",
+        "#1F8080",
+        "#3FB584",
+        "#A6F0A8"
+      ]
+    },
+    {
+      "id": "ink",
+      "name": "Name",
+      "ramp": [
+        "#F2FBFF"
+      ]
+    }
+  ]
+}

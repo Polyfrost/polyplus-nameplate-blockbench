@@ -1,0 +1,36 @@
+{
+  "slots": [
+    {
+      "id": "soda",
+      "name": "Soda",
+      "ramp": [
+        "#D5476A",
+        "#BC3459",
+        "#A1264C",
+        "#871C42"
+      ]
+    },
+    {
+      "id": "edge",
+      "name": "Edge",
+      "ramp": [
+        "#4A0D26"
+      ]
+    },
+    {
+      "id": "bubble",
+      "name": "Bubble",
+      "ramp": [
+        "#E0607F",
+        "#FFE3D8"
+      ]
+    },
+    {
+      "id": "ink",
+      "name": "Name",
+      "ramp": [
+        "#FFFAF5"
+      ]
+    }
+  ]
+}

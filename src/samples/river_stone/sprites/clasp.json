@@ -1,0 +1,17 @@
+{
+  "colors": {
+    "e": "edge",
+    "g": "gem",
+    "d": "gem[1]",
+    "l": "lip"
+  },
+  "rows": [
+    "..e..",
+    ".ege.",
+    "eggde",
+    "eglde",
+    "egdde",
+    ".ede.",
+    "..e.."
+  ]
+}

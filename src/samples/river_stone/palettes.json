@@ -1,0 +1,96 @@
+{
+  "slots": [
+    {
+      "id": "stone",
+      "name": "Stone",
+      "ramp": [
+        "#5F7F96",
+        "#4F6D84",
+        "#415C72"
+      ]
+    },
+    {
+      "id": "edge",
+      "name": "Edge",
+      "ramp": [
+        "#22323F"
+      ]
+    },
+    {
+      "id": "lip",
+      "name": "Lip",
+      "ramp": [
+        "#8FB0C4"
+      ]
+    },
+    {
+      "id": "gem",
+      "name": "Gem",
+      "ramp": [
+        "#F0C869",
+        "#C98A2F"
+      ]
+    },
+    {
+      "id": "ink",
+      "name": "Name",
+      "ramp": [
+        "#F4F8FA"
+      ]
+    }
+  ],
+  "colorways": {
+    "river": {},
+    "moss": {
+      "stone": [
+        "#6A8A52",
+        "#587645",
+        "#4A6339"
+      ],
+      "edge": [
+        "#26361D"
+      ],
+      "lip": [
+        "#9DBB7E"
+      ],
+      "gem": [
+        "#F2E2A0",
+        "#C9A64C"
+      ]
+    },
+    "clay": {
+      "stone": [
+        "#B5694A",
+        "#9E583D",
+        "#874A33"
+      ],
+      "edge": [
+        "#3F1F15"
+      ],
+      "lip": [
+        "#DC9A78"
+      ],
+      "gem": [
+        "#8FE0D0",
+        "#47A597"
+      ]
+    },
+    "dusk": {
+      "stone": [
+        "#7A5A9C",
+        "#674A87",
+        "#573D73"
+      ],
+      "edge": [
+        "#2A1C3C"
+      ],
+      "lip": [
+        "#AD8FCC"
+      ],
+      "gem": [
+        "#FFB4C8",
+        "#D9688C"
+      ]
+    }
+  }
+}

@@ -1,0 +1,49 @@
+{
+  "format": 1,
+  "id": "starter_snail_walk",
+  "requires": [
+    "canvas",
+    "sprites"
+  ],
+  "fps": 8,
+  "loop": 16,
+  "ownsBackground": true,
+  "text": {
+    "mode": "vanilla",
+    "color": "ink",
+    "shadow": "auto",
+    "outline": "auto",
+    "formatting": "adjust",
+    "candidates": [
+      "#FFFFFF",
+      "#2E2013"
+    ]
+  },
+  "layers": [
+    {
+      "id": "plate"
+    },
+    {
+      "id": "snail",
+      "depth": "over_background"
+    }
+  ],
+  "animations": {
+    "sneak_rest": {
+      "trigger": {
+        "reaction": "sneaking",
+        "on": "while"
+      },
+      "tracks": {
+        "snail": {
+          "speed": [
+            [
+              0,
+              0
+            ]
+          ]
+        }
+      }
+    }
+  }
+}

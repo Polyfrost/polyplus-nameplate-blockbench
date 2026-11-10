@@ -1,0 +1,17 @@
+{
+  "kind": "sprite",
+  "sprite": "stars",
+  "of": "sky",
+  "anchor": "top",
+  "pivot": "top",
+  "offset": [
+    0,
+    0
+  ],
+  "repeat": {
+    "edge": "top",
+    "spacing": 26,
+    "min": 1,
+    "max": 24
+  }
+}

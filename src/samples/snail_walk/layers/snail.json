@@ -1,0 +1,41 @@
+{
+  "kind": "sprite",
+  "sprite": "snail",
+  "of": "plate",
+  "path": {
+    "preset": "perimeter",
+    "follow": "outside",
+    "speed": 0.5,
+    "end": "wrap",
+    "frames": {
+      "right": [
+        0,
+        0,
+        1,
+        1
+      ],
+      "down": [
+        2,
+        2,
+        3,
+        3
+      ],
+      "left": [
+        4,
+        4,
+        5,
+        5
+      ],
+      "up": [
+        6,
+        6,
+        7,
+        7
+      ]
+    }
+  },
+  "walkers": {
+    "count": 2,
+    "spacing": 34
+  }
+}

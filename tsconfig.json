@@ -1,0 +1,15 @@
+{
+    "compilerOptions": {
+        "target": "ES2022",
+        "module": "ES2022",
+        "moduleResolution": "bundler",
+        "strict": true,
+        "skipLibCheck": true,
+        "isolatedModules": true,
+        "esModuleInterop": true,
+        "lib": ["ES2023", "DOM", "DOM.Iterable"],
+        "types": ["blockbench-types"],
+        "noEmit": true
+    },
+    "include": ["src/**/*.ts", "engine/*.d.ts"]
+}

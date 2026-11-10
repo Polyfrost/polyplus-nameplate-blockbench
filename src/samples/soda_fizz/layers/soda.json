@@ -1,0 +1,18 @@
+{
+  "kind": "body",
+  "padding": [
+    4,
+    2,
+    4,
+    2
+  ],
+  "radius": 3,
+  "fill": {
+    "gradient": "soda"
+  },
+  "rings": [
+    {
+      "color": "edge"
+    }
+  ]
+}

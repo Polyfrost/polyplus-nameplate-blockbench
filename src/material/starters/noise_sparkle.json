@@ -1,0 +1,32 @@
+{
+    "name": "Noise sparkle",
+    "description": "Single pixels that light up at random spots and blink once per loop, a little past the edges.",
+    "id": "sparkle",
+    "depth": "over_background",
+    "color": "light",
+    "params": {
+        "density": { "label": "How many sparkles", "default": 0.08, "min": 0, "max": 0.4, "step": 0.01 },
+        "twinkle": { "label": "Time lit (part of the loop)", "default": 0.3, "min": 0.05, "max": 1, "step": 0.05 }
+    },
+    "material": {
+        "resolution": "pixel",
+        "margins": [2, 2, 2, 2],
+        "nodes": [
+            { "id": "cell", "type": "PixelCell" },
+            { "id": "random", "type": "Hash", "in": { "p": "cell" }, "set": { "seed": 7 } },
+            { "id": "density", "type": "Param", "set": { "name": "$param:density" } },
+            { "id": "rare", "type": "sub", "in": { "a": 1.0, "b": "density" } },
+            { "id": "chosen", "type": "step", "in": { "edge": "rare", "x": "random" } },
+            { "id": "phase", "type": "Expr", "set": { "expr": "q.frame / q.loop" } },
+            { "id": "offset", "type": "mul", "in": { "a": "random", "b": 37.0 } },
+            { "id": "time", "type": "add", "in": { "a": "offset", "b": "phase" } },
+            { "id": "cycle", "type": "frac", "in": { "x": "time" } },
+            { "id": "twinkle", "type": "Param", "set": { "name": "$param:twinkle" } },
+            { "id": "dark", "type": "sub", "in": { "a": 1.0, "b": "twinkle" } },
+            { "id": "lit", "type": "step", "in": { "edge": "dark", "x": "cycle" } },
+            { "id": "cover", "type": "mul", "in": { "a": "chosen", "b": "lit" } },
+            { "id": "tint", "type": "Slot", "set": { "slot": "$color" } },
+            { "id": "out", "type": "Output", "in": { "color": "tint", "coverage": "cover" } }
+        ]
+    }
+}

@@ -1,0 +1,22 @@
+{
+    "name": "polyplus-nameplate-blockbench",
+    "version": "0.1.0",
+    "private": true,
+    "scripts": {
+        "sync-engine": "node scripts/sync-engine.mjs",
+        "build": "node build.mjs",
+        "typecheck": "tsc --noEmit -p tsconfig.json"
+    },
+    "devDependencies": {
+        "blockbench-types": "5.2.1",
+        "esbuild": "0.28.2",
+        "typescript": "6.0.3"
+    },
+    "dependencies": {
+        "rete": "2.0.6",
+        "rete-area-plugin": "2.3.2",
+        "rete-connection-plugin": "2.0.5",
+        "rete-render-utils": "2.0.3",
+        "rete-vue-plugin": "2.1.3"
+    }
+}

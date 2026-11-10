@@ -1,0 +1,18 @@
+{
+  "kind": "body",
+  "padding": [
+    4,
+    7,
+    4,
+    2
+  ],
+  "radius": 3,
+  "fill": {
+    "gradient": "sky"
+  },
+  "rings": [
+    {
+      "color": "edge"
+    }
+  ]
+}

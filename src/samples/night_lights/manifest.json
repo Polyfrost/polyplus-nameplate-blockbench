@@ -1,0 +1,55 @@
+{
+  "format": 1,
+  "id": "starter_night_lights",
+  "requires": [
+    "canvas",
+    "sprites",
+    "materials"
+  ],
+  "fps": 5,
+  "loop": 18,
+  "ownsBackground": true,
+  "params": {
+    "glow": 1
+  },
+  "text": {
+    "mode": "vanilla",
+    "color": "ink",
+    "shadow": "auto",
+    "outline": "auto",
+    "formatting": "adjust",
+    "candidates": [
+      "#FFFFFF",
+      "#0A1020"
+    ]
+  },
+  "layers": [
+    {
+      "id": "sky"
+    },
+    {
+      "id": "stars"
+    },
+    {
+      "id": "curtain"
+    }
+  ],
+  "animations": {
+    "sneak_dim": {
+      "trigger": {
+        "reaction": "sneaking",
+        "on": "while"
+      },
+      "tracks": {
+        "curtain": {
+          "param.glow": [
+            [
+              0,
+              0.5
+            ]
+          ]
+        }
+      }
+    }
+  }
+}

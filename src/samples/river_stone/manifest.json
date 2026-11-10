@@ -1,0 +1,45 @@
+{
+  "format": 1,
+  "id": "starter_river_stone",
+  "requires": [
+    "canvas",
+    "sprites"
+  ],
+  "fps": 6,
+  "loop": 12,
+  "ownsBackground": true,
+  "text": {
+    "mode": "vanilla",
+    "color": "ink",
+    "shadow": "auto",
+    "outline": "auto",
+    "formatting": "adjust",
+    "candidates": [
+      "#FFFFFF",
+      "#14181F"
+    ]
+  },
+  "layers": [
+    {
+      "id": "stone"
+    },
+    {
+      "id": "clasp",
+      "depth": "over_background"
+    }
+  ],
+  "variants": {
+    "river": {
+      "palette": "river"
+    },
+    "moss": {
+      "palette": "moss"
+    },
+    "clay": {
+      "palette": "clay"
+    },
+    "dusk": {
+      "palette": "dusk"
+    }
+  }
+}

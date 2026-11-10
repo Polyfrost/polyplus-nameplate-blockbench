@@ -1,0 +1,30 @@
+{
+    "name": "Soft glow",
+    "description": "A smooth light that fades out around the name. Adds light, so it shows best behind a dark body or on its own.",
+    "id": "soft_glow",
+    "depth": "behind",
+    "color": "light",
+    "params": {
+        "strength": { "label": "Brightness", "default": 0.8, "min": 0, "max": 1, "step": 0.05 },
+        "reach": { "label": "Fade starts at", "default": 0.3, "min": 0, "max": 0.95, "step": 0.05 }
+    },
+    "material": {
+        "resolution": "smooth",
+        "margins": [8, 5, 8, 5],
+        "emissive": true,
+        "nodes": [
+            { "id": "uv", "type": "TagUV" },
+            { "id": "centered", "type": "sub", "in": { "a": "uv", "b": [0.5, 0.5] } },
+            { "id": "scaled", "type": "mul", "in": { "a": "centered", "b": [2.0, 2.0] } },
+            { "id": "distance", "type": "length", "in": { "v": "scaled" } },
+            { "id": "reach", "type": "Param", "set": { "name": "$param:reach" } },
+            { "id": "edge", "type": "smoothstep", "in": { "edge0": "reach", "edge1": 1.0, "x": "distance" } },
+            { "id": "fall", "type": "sub", "in": { "a": 1.0, "b": "edge" } },
+            { "id": "strength", "type": "Param", "set": { "name": "$param:strength" } },
+            { "id": "amount", "type": "mul", "in": { "a": "fall", "b": "strength" } },
+            { "id": "tint", "type": "Slot", "set": { "slot": "$color" } },
+            { "id": "light", "type": "Alpha", "in": { "color": "tint", "alpha": "amount" } },
+            { "id": "out", "type": "Output", "in": { "color": "light" }, "set": { "blend": "additive" } }
+        ]
+    }
+}

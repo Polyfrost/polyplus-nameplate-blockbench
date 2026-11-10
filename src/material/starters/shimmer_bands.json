@@ -1,0 +1,29 @@
+{
+    "name": "Shimmer bands",
+    "description": "Diagonal bands in the shades of one color that slide across, in whole pixels. Use it as the fill of a body.",
+    "id": "shimmer",
+    "depth": "background",
+    "ramp": true,
+    "params": {
+        "width": { "label": "Band width (px)", "default": 3, "min": 1, "max": 12, "step": 1 },
+        "speed": { "label": "Bands per loop", "default": 1, "min": 0, "max": 6, "step": 1 }
+    },
+    "material": {
+        "resolution": "pixel",
+        "nodes": [
+            { "id": "cell", "type": "PixelCell" },
+            { "id": "cx", "type": "Component", "in": { "v": "cell" }, "set": { "component": "x" } },
+            { "id": "cy", "type": "Component", "in": { "v": "cell" }, "set": { "component": "y" } },
+            { "id": "diagonal", "type": "add", "in": { "a": "cx", "b": "cy" } },
+            { "id": "width", "type": "Param", "set": { "name": "$param:width" } },
+            { "id": "bands", "type": "div", "in": { "a": "diagonal", "b": "width" } },
+            { "id": "phase", "type": "Expr", "set": { "expr": "q.frame / q.loop" } },
+            { "id": "speed", "type": "Param", "set": { "name": "$param:speed" } },
+            { "id": "shift", "type": "mul", "in": { "a": "phase", "b": "speed" } },
+            { "id": "moved", "type": "sub", "in": { "a": "bands", "b": "shift" } },
+            { "id": "level", "type": "frac", "in": { "x": "moved" } },
+            { "id": "shade", "type": "Quantize", "in": { "level": "level" }, "set": { "slot": "$ramp" } },
+            { "id": "out", "type": "Output", "in": { "color": "shade" } }
+        ]
+    }
+}

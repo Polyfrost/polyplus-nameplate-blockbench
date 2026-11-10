@@ -1,0 +1,255 @@
+{
+  "resolution": "pixel",
+  "toneHint": [
+    "curtain[0]",
+    "curtain[2]",
+    "curtain[4]"
+  ],
+  "nodes": [
+    {
+      "id": "cell",
+      "type": "PixelCell"
+    },
+    {
+      "id": "cx",
+      "type": "Component",
+      "in": {
+        "v": "cell"
+      },
+      "set": {
+        "component": "x"
+      }
+    },
+    {
+      "id": "uv",
+      "type": "TagUV"
+    },
+    {
+      "id": "v",
+      "type": "Component",
+      "in": {
+        "v": "uv"
+      },
+      "set": {
+        "component": "y"
+      }
+    },
+    {
+      "id": "frame",
+      "type": "Frame"
+    },
+    {
+      "id": "slow",
+      "type": "mul",
+      "in": {
+        "a": "frame",
+        "b": 0.2222222
+      }
+    },
+    {
+      "id": "wx",
+      "type": "div",
+      "in": {
+        "a": "cx",
+        "b": 10
+      }
+    },
+    {
+      "id": "wmoved",
+      "type": "add",
+      "in": {
+        "a": "wx",
+        "b": "slow"
+      }
+    },
+    {
+      "id": "wp",
+      "type": "Combine",
+      "in": {
+        "x": "wmoved",
+        "y": 0
+      }
+    },
+    {
+      "id": "wave",
+      "type": "Noise",
+      "in": {
+        "p": "wp"
+      },
+      "set": {
+        "seed": 11,
+        "period": [
+          4,
+          0
+        ]
+      }
+    },
+    {
+      "id": "swing",
+      "type": "mul",
+      "in": {
+        "a": "wave",
+        "b": 0.3
+      }
+    },
+    {
+      "id": "crest",
+      "type": "add",
+      "in": {
+        "a": "swing",
+        "b": 0.04
+      }
+    },
+    {
+      "id": "gap",
+      "type": "sub",
+      "in": {
+        "a": "v",
+        "b": "crest"
+      }
+    },
+    {
+      "id": "below",
+      "type": "step",
+      "in": {
+        "edge": 0,
+        "x": "gap"
+      }
+    },
+    {
+      "id": "drop",
+      "type": "mul",
+      "in": {
+        "a": "gap",
+        "b": 3
+      }
+    },
+    {
+      "id": "fall",
+      "type": "sub",
+      "in": {
+        "a": 1,
+        "b": "drop"
+      }
+    },
+    {
+      "id": "rx",
+      "type": "div",
+      "in": {
+        "a": "cx",
+        "b": 2
+      }
+    },
+    {
+      "id": "rfast",
+      "type": "mul",
+      "in": {
+        "a": "frame",
+        "b": 0.4444444
+      }
+    },
+    {
+      "id": "rmoved",
+      "type": "sub",
+      "in": {
+        "a": "rx",
+        "b": "rfast"
+      }
+    },
+    {
+      "id": "rp",
+      "type": "Combine",
+      "in": {
+        "x": "rmoved",
+        "y": 0
+      }
+    },
+    {
+      "id": "rays",
+      "type": "Noise",
+      "in": {
+        "p": "rp"
+      },
+      "set": {
+        "seed": 4,
+        "period": [
+          8,
+          0
+        ]
+      }
+    },
+    {
+      "id": "soft",
+      "type": "mul",
+      "in": {
+        "a": "rays",
+        "b": 0.45
+      }
+    },
+    {
+      "id": "shade",
+      "type": "add",
+      "in": {
+        "a": "soft",
+        "b": 0.55
+      }
+    },
+    {
+      "id": "body",
+      "type": "mul",
+      "in": {
+        "a": "fall",
+        "b": "shade"
+      }
+    },
+    {
+      "id": "lit",
+      "type": "mul",
+      "in": {
+        "a": "below",
+        "b": "body"
+      }
+    },
+    {
+      "id": "glow",
+      "type": "Param",
+      "set": {
+        "name": "glow"
+      }
+    },
+    {
+      "id": "level",
+      "type": "mul",
+      "in": {
+        "a": "lit",
+        "b": "glow"
+      }
+    },
+    {
+      "id": "cover",
+      "type": "step",
+      "in": {
+        "edge": 0.12,
+        "x": "level"
+      }
+    },
+    {
+      "id": "tone",
+      "type": "Quantize",
+      "in": {
+        "level": "level"
+      },
+      "set": {
+        "slot": "curtain"
+      }
+    },
+    {
+      "id": "out",
+      "type": "Output",
+      "in": {
+        "color": "tone",
+        "coverage": "cover"
+      }
+    }
+  ]
+}

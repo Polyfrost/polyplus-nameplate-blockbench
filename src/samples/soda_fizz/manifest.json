@@ -1,0 +1,76 @@
+{
+  "format": 1,
+  "id": "starter_soda_fizz",
+  "requires": [
+    "canvas",
+    "sprites"
+  ],
+  "fps": 12,
+  "loop": 24,
+  "ownsBackground": true,
+  "text": {
+    "mode": "vanilla",
+    "color": "ink",
+    "shadow": "auto",
+    "outline": "auto",
+    "formatting": "adjust",
+    "candidates": [
+      "#FFFFFF",
+      "#2A0A16"
+    ]
+  },
+  "layers": [
+    {
+      "id": "bubbles",
+      "depth": "behind"
+    },
+    {
+      "id": "soda"
+    }
+  ],
+  "animations": {
+    "equip_pour": {
+      "trigger": "equip",
+      "length": 12,
+      "tracks": {
+        "bubbles": {
+          "burst": [
+            [
+              0,
+              8
+            ],
+            [
+              6,
+              6
+            ]
+          ]
+        }
+      }
+    },
+    "sprint_shake": {
+      "trigger": {
+        "reaction": "sprinting",
+        "on": "while"
+      },
+      "reduced": "drop",
+      "tracks": {
+        "bubbles": {
+          "burst": [
+            [
+              0,
+              3
+            ],
+            [
+              8,
+              3
+            ],
+            [
+              16,
+              3
+            ]
+          ]
+        }
+      }
+    }
+  }
+}

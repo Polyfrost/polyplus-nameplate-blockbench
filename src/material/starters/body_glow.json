@@ -1,0 +1,30 @@
+{
+    "name": "Soft glow around the body",
+    "description": "A light that hugs the edge of the body, rounded corners included. It takes the first body under Covers. Pick another one in the Inspector.",
+    "id": "body_glow",
+    "depth": "behind",
+    "color": "light",
+    "wantsBody": true,
+    "params": {
+        "strength": { "label": "Brightness", "default": 0.8, "min": 0, "max": 1, "step": 0.05 },
+        "reach": { "label": "Reach (px)", "default": 5, "min": 1, "max": 6, "step": 1 }
+    },
+    "material": {
+        "resolution": "smooth",
+        "margins": [6, 6, 6, 6],
+        "emissive": true,
+        "nodes": [
+            { "id": "distance", "type": "BodyEdge", "set": { "edge": "outer" } },
+            { "id": "reach", "type": "Param", "set": { "name": "$param:reach" } },
+            { "id": "fade", "type": "smoothstep", "in": { "edge0": 0, "edge1": "reach", "x": "distance" } },
+            { "id": "fall", "type": "sub", "in": { "a": 1.0, "b": "fade" } },
+            { "id": "outside", "type": "step", "in": { "edge": 0, "x": "distance" } },
+            { "id": "glow", "type": "mul", "in": { "a": "fall", "b": "outside" } },
+            { "id": "strength", "type": "Param", "set": { "name": "$param:strength" } },
+            { "id": "amount", "type": "mul", "in": { "a": "glow", "b": "strength" } },
+            { "id": "tint", "type": "Slot", "set": { "slot": "$color" } },
+            { "id": "light", "type": "Alpha", "in": { "color": "tint", "alpha": "amount" } },
+            { "id": "out", "type": "Output", "in": { "color": "light" }, "set": { "blend": "additive" } }
+        ]
+    }
+}

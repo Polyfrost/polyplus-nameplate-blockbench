@@ -1,0 +1,116 @@
+{
+  "colors": {
+    "s": "shell",
+    "S": "shell[1]",
+    "L": "shell[2]",
+    "b": "skin",
+    "d": "skin[1]",
+    "e": "skin[2]"
+  },
+  "frames": [
+    [
+      "...........",
+      "...........",
+      "...........",
+      "...ssss....",
+      "..sLLLSs...",
+      ".sLSssLSs.e",
+      ".sLsLSsLs.b",
+      ".sLsLLsLs.b",
+      ".sSSssSSsbb",
+      "..ssssssbbb",
+      "dddddddddd."
+    ],
+    [
+      "...........",
+      "...........",
+      "...........",
+      "....ssss...",
+      "...sLLLSs..",
+      "..sLSssLS.e",
+      "..sLsLSsLsb",
+      "..sLsLLsLsb",
+      "..sSSssSSbb",
+      "...ssssssbb",
+      ".dddddddddd"
+    ],
+    [
+      "d..........",
+      "d.ssss.....",
+      "dsSLLLs....",
+      "dsSssSLs...",
+      "dssLLsLs...",
+      "dssLSsLs...",
+      "dsSssLSs...",
+      "dsSLLSs....",
+      "dbssss.....",
+      "dbb........",
+      ".bbbbe....."
+    ],
+    [
+      "...........",
+      "d..........",
+      "d.ssss.....",
+      "dsSLLLs....",
+      "dsSssSLs...",
+      "dssLLsLs...",
+      "dssLSsLs...",
+      "dsSssLSs...",
+      "dsSLLSs....",
+      "dbbss......",
+      "dbbbbe....."
+    ],
+    [
+      ".dddddddddd",
+      "bbbssssss..",
+      "bbsSSssSSs.",
+      "b.sLsLLsLs.",
+      "b.sLsSLsLs.",
+      "e.sSLssSLs.",
+      "...sSLLLs..",
+      "....ssss...",
+      "...........",
+      "...........",
+      "..........."
+    ],
+    [
+      "dddddddddd.",
+      "bbssssss...",
+      "bbSSssSSs..",
+      "bsLsLLsLs..",
+      "bsLsSLsLs..",
+      "e.SLssSLs..",
+      "..sSLLLs...",
+      "...ssss....",
+      "...........",
+      "...........",
+      "..........."
+    ],
+    [
+      ".....ebbbb.",
+      "........bbd",
+      ".....ssssbd",
+      "....sSLLSsd",
+      "...sSLssSsd",
+      "...sLsSLssd",
+      "...sLsLLssd",
+      "...sLSssSsd",
+      "....sLLLSsd",
+      ".....ssss.d",
+      "..........d"
+    ],
+    [
+      ".....ebbbbd",
+      "......ssbbd",
+      "....sSLLSsd",
+      "...sSLssSsd",
+      "...sLsSLssd",
+      "...sLsLLssd",
+      "...sLSssSsd",
+      "....sLLLSsd",
+      ".....ssss.d",
+      "..........d",
+      "..........."
+    ]
+  ]
+}
