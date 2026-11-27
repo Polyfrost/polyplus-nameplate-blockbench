@@ -1,3 +1,4 @@
+import { engineAnchors, offeredBy } from '../engine'
 import { limited, tell } from '../elements/limits'
 import { findNode, layerNodes, selectedLayerNodes } from '../elements/nodes'
 import { ANCHORS } from '../elements/read'
@@ -133,7 +134,7 @@ export function spriteForm(placement: Part, onImport: () => void): Part {
             input: (node) => ({
                 type: 'select',
                 label: 'Sticks to',
-                options: withCurrent(labeled(SPRITE_ANCHORS, ANCHOR_LABELS), String(node.anchor ?? ''), String(node.anchor ?? '')),
+                options: withCurrent(labeled(offeredBy(SPRITE_ANCHORS, engineAnchors()), ANCHOR_LABELS), String(node.anchor ?? ''), String(node.anchor ?? '')),
                 description: 'The ends of the name keep it next to the letters at any name width',
             }),
             get: (node) => node.anchor ?? 'top_left',
@@ -165,7 +166,7 @@ export function spriteForm(placement: Part, onImport: () => void): Part {
         }),
         followNotes,
         field('pivot', {
-            input: { type: 'select', label: 'Own point', options: { '': 'Automatic', ...labeled(ANCHORS, ANCHOR_LABELS) }, condition: (result: any) => !result?.follow, description: 'Which point of the sprite touches Sticks to. Bottom right on Top left puts it outside that corner' },
+            input: { type: 'select', label: 'Own point', options: { '': 'Automatic', ...labeled(offeredBy(ANCHORS, engineAnchors()), ANCHOR_LABELS) }, condition: (result: any) => !result?.follow, description: 'Which point of the sprite touches Sticks to. Bottom right on Top left puts it outside that corner' },
             get: (node) => node.pivot ?? '',
             set: (node, value) => {
                 node.pivot = String(value ?? '')

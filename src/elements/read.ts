@@ -1,4 +1,4 @@
-import { isWhile, readSettings, reducedOf, scheduleOf, triggerOf } from '../animate/props'
+import { readSettings, reducedOf, scheduleOf, triggerOf } from '../animate/props'
 import {
     Anchor,
     AnimationData,
@@ -31,8 +31,6 @@ import { plateNode } from '../plate'
 import { animationPalette } from '../palanim/reaction'
 import { readNameplate } from '../palette/state'
 import { readEffect } from '../kinds/effect'
-import { isEffectNode } from '../material/types'
-import { effectReads, paramChannel, paramTrackChannel, readParamKeys } from '../material/params'
 import { keyMolang } from '../molang/keys'
 import { curvedKeys } from '../animate/curves'
 import { allAnimations, findLoopAnimation } from '../util/animation'
@@ -162,18 +160,7 @@ function rateOf(fps: number): number {
     return isFinite(fps) && fps > 0 ? fps : 1
 }
 
-function paramTracks(node: any, animator: any, target: string, rate: number, wrap: number): TrackData[] {
-    if (!isEffectNode(node)) return []
-    const tracks: TrackData[] = []
-    for (const name of effectReads(node)) {
-        const keyframes = animator[paramChannel(name)]
-        if (!Array.isArray(keyframes) || keyframes.length === 0) continue
-        tracks.push({ target, channel: paramTrackChannel(name), keys: readParamKeys(keyframes, rate, wrap) })
-    }
-    return tracks
-}
-
-function readTracks(animation: any, state: Scan, rate: number, grain = 1, wrap = 0): TrackData[] {
+function readTracks(animation: any, state: Scan, rate: number, grain = 1): TrackData[] {
     const animators = animation.animators ?? {}
     const tracks: TrackData[] = []
     for (const node of state.ordered) {
@@ -185,7 +172,6 @@ function readTracks(animation: any, state: Scan, rate: number, grain = 1, wrap =
             if (!Array.isArray(keyframes) || keyframes.length === 0) continue
             tracks.push({ target, channel, keys: trackKeys(channel, keyframes, rate, animation.loop, grain) })
         }
-        tracks.push(...paramTracks(node, animator, target, rate, wrap))
     }
     const pinned: Array<[any, string, Channel[]]> = [
         [badgeNode(), BADGE_TARGET, BADGE_CHANNELS],
@@ -218,7 +204,7 @@ export function readLoop(fps: number): LoopData | null {
     if (!animation) return null
     const rate = rateOf(fps)
     const length = Math.max(1, wholeOr(animation.length * rate, 1))
-    return { length, tracks: readTracks(animation, scan(), rate, 1, length) }
+    return { length, tracks: readTracks(animation, scan(), rate) }
 }
 
 function hasKeys(animator: any, node: any): boolean {
@@ -256,7 +242,6 @@ export function readAnimations(fps: number): AnimationData[] {
     const state = scan()
     const palette = readNameplate().palette
     const grains = scheduleGrains(all, loop, state)
-    const loopLength = loop ? Math.max(1, wholeOr(Number(loop.length) * rate, 1)) : 0
     const result: AnimationData[] = []
     for (const animation of all) {
         if (!animation || animation === loop) continue
@@ -271,7 +256,7 @@ export function readAnimations(fps: number): AnimationData[] {
             schedule,
             length: Math.max(0, wholeOr(Number(animation.length) * rate, 0)),
             restart: settings.restart,
-            tracks: readTracks(animation, state, rate, schedule ? grains.get(schedule.id ?? String(animation.name ?? '')) || 1 : 1, triggered && isWhile(trigger) ? loopLength : 0),
+            tracks: readTracks(animation, state, rate, schedule ? grains.get(schedule.id ?? String(animation.name ?? '')) || 1 : 1),
             bursts: readKeyed(EMITTER_TYPE, readBurstKeys, animation, state, rate),
             speeds: readKeyed(PATH_TYPE, readTriggeredSpeedKeys, animation, state, rate),
             palette: triggered ? animationPalette(animation, palette) : [],

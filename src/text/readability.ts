@@ -3,26 +3,26 @@ import type { CrowdLayout } from '../preview/crowd'
 import { previewCostOf } from '../preview/cost'
 import { hardLines } from './backdrop'
 
-const VARIANT_PATH = /#variants\.(.+)$/
-const flagged = new WeakMap<NameplatePreview, Set<string>>()
+const flagged = new WeakMap<NameplatePreview, { version: number, variants: Set<string> }>()
 const lineChecks = new WeakMap<NameplatePreview, Map<string, boolean>>()
 
 export function hardToRead(preview: NameplatePreview | null): Set<string> | null {
     if (!preview) return null
+    const version = preview.version
     const known = flagged.get(preview)
-    if (known) return known
+    if (known && known.version === version) return known.variants
     const variants = new Set<string>()
     try {
         for (const warning of previewCostOf(preview).warnings) {
             if (warning.code !== 'readability') continue
-            const variant = VARIANT_PATH.exec(warning.path)?.[1]
-            if (variant !== undefined) variants.add(variant)
+            const variant = warning.names?.variant
+            if (variant) variants.add(variant)
         }
     } catch (error) {
         console.error('[polyplus_nameplate] readability check failed', error)
         return null
     }
-    flagged.set(preview, variants)
+    flagged.set(preview, { version, variants })
     return variants
 }
 

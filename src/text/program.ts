@@ -1,9 +1,8 @@
-import * as EngineModule from '../../engine/PolyPlus-nameplate-engine.js'
 import { labelFor, MolangName, NAMEPLATE_FUNCTIONS, NAMEPLATE_QUERIES } from '../molang/catalog'
 import { projectParams } from '../molang/params'
 import { molangIssueText } from '../molang/probe'
 import { issueName, issueValue } from '../checks/codes'
-import { EngineIssue, wrapIssue } from '../engine'
+import { checkMolang, EngineIssue } from '../engine'
 import { readNameplate } from '../palette/state'
 import { toneChoices } from '../palette/tones'
 import { loopPixels, nameRect } from './backdrop'
@@ -12,8 +11,6 @@ import { shownPreview, shownVariant, styleOf } from './style'
 import { dialogButtons } from '../util/dialogs'
 import { ensureStyle, removeStyle } from '../util/style'
 import { LETTER_MODE_NAMES, TextMode } from './types'
-
-const api = EngineModule.org.polyfrost.polyplus.nameplate.engine.js
 
 interface Suggestion {
     text: string
@@ -277,8 +274,8 @@ function letterProgramProblems(source: string, letters: LetterContext): string[]
     if (cached) return cached
     let result: string[]
     try {
-        const issues = Array.from(api.nameplateCheckLetterProgram(trimmed, mode, fps, length, names, Float64Array.from(names.map((name) => params[name]))))
-        const messages = issues.map((issue) => letterIssueText(wrapIssue(issue), letters.reaction)).filter((message): message is string => !!message)
+        const issues = checkMolang(trimmed, 'text')
+        const messages = issues.map((issue) => letterIssueText(issue, letters.reaction)).filter((message): message is string => !!message)
         result = Array.from(new Set(messages))
     } catch (error) {
         console.error('[polyplus_nameplate] checking a letter program failed', error)

@@ -1,3 +1,4 @@
+import { engineReactions } from '../engine'
 import { Reaction, REACTIONS, ReactionMode, ReducedMode, ScheduleData, TriggerData } from '../model'
 import { finiteOr, wholeOr } from '../util/num'
 
@@ -33,7 +34,7 @@ export const REDUCED_NAMES: Record<ReducedMode, string> = {
     drop: 'Skip it',
 }
 
-export const REACTION_NAMES: Record<Reaction, string> = {
+export const REACTION_NAMES: Readonly<Record<string, string>> = {
     sneaking: 'Sneaking',
     sprinting: 'Sprinting',
     hurt: 'Hurt (the red damage flash)',
@@ -83,8 +84,20 @@ export function defineAnimationProperties(): Property[] {
     ]
 }
 
+export function reactionChoices(): Reaction[] {
+    const known = engineReactions()
+    return known.length ? known.slice() : REACTIONS.slice()
+}
+
+export function reactionLabel(reaction: string): string {
+    const known = REACTION_NAMES[reaction]
+    if (known) return known
+    const words = reaction.replace(/^is_/, '').replace(/_/g, ' ').trim()
+    return words ? words.charAt(0).toUpperCase() + words.slice(1) : reaction
+}
+
 export function isReaction(value: unknown): value is Reaction {
-    return (REACTIONS as readonly string[]).includes(value as string)
+    return typeof value === 'string' && ((REACTIONS as readonly string[]).includes(value) || engineReactions().includes(value))
 }
 
 export function isReactionMode(value: unknown): value is ReactionMode {

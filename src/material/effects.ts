@@ -1,6 +1,6 @@
 import { currentBundle } from '../compile'
 import { readLayers } from '../elements/read'
-import { NameplateEffectInfo, NameplatePreview, NameplateTagState, stateOf } from '../engine'
+import { NameplateEffectInfo, NameplatePreview, NameplateTagState, PreviewSlot, stateOf } from '../engine'
 import { loadFiles, previewUi } from '../preview'
 import { toneHints } from './tone'
 
@@ -22,6 +22,7 @@ export interface CurveSpec {
 }
 
 const cache: { files: Record<string, string> | null, view: EffectsView | null } = { files: null, view: null }
+const held = new PreviewSlot()
 
 function load(files: Record<string, string>): EffectsView | null {
     const loaded = loadFiles(files)
@@ -36,10 +37,12 @@ export function effectsView(): EffectsView | null {
         if (cache.files === bundle.files) return cache.view
         cache.files = bundle.files
         cache.view = Object.keys(bundle.files).length ? load(bundle.files) : null
+        held.set(cache.view?.preview ?? null)
         return cache.view
     } catch (error) {
         console.error('[polyplus_nameplate] reading effect details failed', error)
         cache.view = null
+        held.clear()
         return null
     }
 }

@@ -1,14 +1,16 @@
+import { reactionLabel } from '../animate/props'
 import { readLayers } from '../elements'
 import { isPaintDragging, onPaintDragEnd } from '../util/paintDrag'
 import { findNode } from '../elements/nodes'
-import { NameplateLayer, NameplatePreview, stateOf } from '../engine'
 import { showLayer } from '../navigate'
-import { currentLoad, mainLayout, onPreviewResult, PreviewResult, previewUi, projectKey } from '../preview'
+import { currentLoad, onPreviewResult, PreviewResult, previewUi, projectKey } from '../preview'
 import { CostInfo, CostReport, costReport } from '../preview/cost'
 import { CROWD } from '../preview/crowd'
 import { isLiveOnStage, liveUi, playingShots, REACTION_LABELS } from '../preview/live'
 import { previewOptions } from '../preview/options'
 import { createListenerSet } from '../util/events'
+import { onFullChecks } from '../compile'
+import { signalControls, signalValueText } from '../cosmetic/preview'
 
 const FLASH_DELAY_MS = 400
 
@@ -16,6 +18,16 @@ export interface ReactionEntry {
     id: string
     label: string
     on: boolean
+}
+
+export interface LevelEntry {
+    signal: string
+    label: string
+    min: number
+    max: number
+    step: number
+    value: number
+    text: string
 }
 
 export interface ShotEntry {
@@ -33,6 +45,7 @@ interface CostUi {
 interface TryUi {
     hasPreview: boolean
     reactions: ReactionEntry[]
+    levels: LevelEntry[]
     oneShots: ShotEntry[]
     seed: number
     crowd: boolean
@@ -51,6 +64,7 @@ export const costUi: CostUi = { report: emptyReport(), opened: [], closed: [], m
 export const tryUi: TryUi = {
     hasPreview: false,
     reactions: [],
+    levels: [],
     oneShots: [],
     seed: 0,
     crowd: false,
@@ -62,7 +76,7 @@ export const tryUi: TryUi = {
 
 type ReportListener = (report: CostReport) => void
 
-const seen: { load: unknown, reactions: string, shots: string, project: string } = { load: undefined, reactions: '', shots: '', project: '' }
+const seen: { load: unknown, reactions: string, levels: string, shots: string, project: string } = { load: undefined, reactions: '', levels: '', shots: '', project: '' }
 const listeners = createListenerSet<[CostReport]>('cost listener failed')
 const handles: { flashTimer: ReturnType<typeof setTimeout> | null, remove: (() => void) | null, users: number } = {
     flashTimer: null,
@@ -88,11 +102,6 @@ function cancelFlash() {
     handles.flashTimer = null
 }
 
-function paintForCost(preview: NameplatePreview, frame: number): NameplateLayer[] {
-    const variant = preview.variants.includes(previewUi.variant) ? previewUi.variant : preview.variants[0] ?? previewUi.variant
-    return preview.paint(variant, mainLayout().block, frame, previewUi.seed, stateOf(preview.reactions), 'full')
-}
-
 function scheduleFlash(load: ReturnType<typeof currentLoad>) {
     cancelFlash()
     if (!costUi.report.flashPending) return
@@ -100,7 +109,7 @@ function scheduleFlash(load: ReturnType<typeof currentLoad>) {
         handles.flashTimer = null
         if (seen.load !== load) return
         try {
-            setReport(costReport(load, true, paintForCost))
+            setReport(costReport(load, true))
         } catch (error) {
             console.error('[polyplus_nameplate] flash check failed', error)
         }
@@ -116,7 +125,32 @@ function syncReactions(available: string[]) {
     const key = `${available.join(',')}|${liveUi.reactions.join(',')}`
     if (key === seen.reactions) return
     seen.reactions = key
-    tryUi.reactions = available.map((id) => ({ id, label: REACTION_LABELS[id] ?? shotLabel(id), on: liveUi.reactions.includes(id) }))
+    tryUi.reactions = available.map((id) => ({ id, label: REACTION_LABELS[id] ?? reactionLabel(id), on: liveUi.reactions.includes(id) }))
+}
+
+export function levelText(entry: Pick<LevelEntry, 'signal'>, value: number): string {
+    const control = signalControls().find((candidate) => candidate.name === entry.signal)
+    return control ? signalValueText(control, value) : String(value)
+}
+
+function syncLevels(available: string[]) {
+    const key = `${available.join(',')}|${JSON.stringify(liveUi.values)}`
+    if (key === seen.levels) return
+    seen.levels = key
+    const controls = signalControls()
+    tryUi.levels = available.map((signal) => {
+        const control = controls.find((candidate) => candidate.name === signal)
+        const value = liveUi.values[signal] ?? 0
+        return {
+            signal,
+            label: control?.label ?? signal,
+            min: control?.min ?? 0,
+            max: control?.max ?? 1,
+            step: control?.step ?? 0.1,
+            value,
+            text: control ? signalValueText(control, value) : String(value),
+        }
+    })
 }
 
 function syncShots(names: string[]) {
@@ -159,10 +193,11 @@ function sync(result: PreviewResult | null) {
         syncShotMessage()
         if (load !== seen.load && !isPaintDragging()) {
             seen.load = load
-            setReport(costReport(load, false, paintForCost))
+            setReport(costReport(load, false))
             scheduleFlash(load)
         }
         syncReactions(preview ? preview.reactions : [])
+        syncLevels(preview ? preview.levels : [])
         syncShots(preview ? preview.oneShots : [])
     } catch (error) {
         console.error('[polyplus_nameplate] left side refresh failed', error)
@@ -181,9 +216,14 @@ export function startLive(): () => void {
     if (!handles.remove) {
         const removeResult = onPreviewResult(sync)
         const removeDragEnd = onPaintDragEnd(() => sync(lastResult))
+        const removeChecks = onFullChecks(() => {
+            seen.load = undefined
+            sync(lastResult)
+        })
         handles.remove = () => {
             removeResult()
             removeDragEnd()
+            removeChecks()
         }
         sync(null)
     }
@@ -196,6 +236,7 @@ export function startLive(): () => void {
         seen.load = undefined
         lastResult = null
         seen.reactions = ''
+        seen.levels = ''
         seen.shots = ''
         seen.project = ''
         setReport(emptyReport())
@@ -203,6 +244,7 @@ export function startLive(): () => void {
         costUi.closed = []
         costUi.manual = null
         tryUi.reactions = []
+        tryUi.levels = []
         tryUi.oneShots = []
         clearShotMessage()
     }

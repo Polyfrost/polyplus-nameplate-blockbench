@@ -1,7 +1,8 @@
 import { defineAnimationProperties, readSettings } from './animate/props'
 import { nameplateLimits } from './engine'
-import { FORMAT_ID, LOOP_ANIMATION, NameplateData } from './model'
+import { FORMAT_ID, LOOP_ANIMATION, NAMEPLATE_DATA_VERSION, NameplateData } from './model'
 import { goMode } from './navigate'
+import { isNewerData, migrateNameplate } from './palette/version'
 import { animationFrames, findLoopAnimation } from './util/animation'
 import { hasProject } from './util/project'
 import { messageBox } from './util/dialogs'
@@ -37,6 +38,7 @@ let loading = false
 
 export function defaultNameplate(): NameplateData {
     return {
+        version: NAMEPLATE_DATA_VERSION,
         id: 'new_nameplate',
         fps: DEFAULT_FPS,
         ownsBackground: true,
@@ -56,7 +58,7 @@ export function defaultNameplate(): NameplateData {
 }
 
 export function maxLoopFrames(): number {
-    const states = nameplateLimits().states
+    const states = nameplateLimits()?.states ?? NaN
     return Number.isFinite(states) && states >= 1 ? states : FALLBACK_MAX_LOOP_FRAMES
 }
 
@@ -286,8 +288,20 @@ function repairSplitLoop(): string[] {
         : 'The project held empty copies of the loop animation. They were removed.']
 }
 
+function warnNewerProject() {
+    messageBox({
+        title: 'Update the Plugin',
+        icon: 'update',
+        message: "This project was saved with a newer version of the PolyPlus Nameplates plugin. Update the plugin before you edit it. Editing it here can lose settings this version doesn't know about, and the preview and zip may be wrong.",
+        buttons: ['OK'],
+        width: 560,
+    })
+}
+
 function finishLoad() {
     ensureNameplateData(Project)
+    if (isNewerData(Project.nameplate)) warnNewerProject()
+    else Project.nameplate = migrateNameplate(Project.nameplate) as NameplateData
     const notes = repairSplitLoop()
     ensureLoopAnimation(false)
     for (const repair of Array.from(loadRepairs)) {

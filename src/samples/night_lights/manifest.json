@@ -42,7 +42,7 @@
       },
       "tracks": {
         "curtain": {
-          "param.glow": [
+          "opacity": [
             [
               0,
               0.5

@@ -185,6 +185,7 @@ const ENGINE_WORDS: Array<[RegExp, string]> = [
 ]
 
 const QUOTED_NAME = /(^|\s)'[^']*'/g
+const UNITS = /\b\d+(?:\.\d+)? kHz\b/g
 const JSON_TEXT = /[[\]{}"#<>=]|\.[a-z]|\b[a-z]+[A-Z]|\b[a-z]+_[a-z]/
 
 const SENTENCES: Array<[RegExp, (match: RegExpExecArray) => string]> = [
@@ -226,7 +227,7 @@ function designerWords(message: string): string {
 }
 
 function isRaw(text: string): boolean {
-    return CHOICE_LIST.test(text) || JSON_TEXT.test(text.replace(QUOTED_NAME, ''))
+    return !text || CHOICE_LIST.test(text) || JSON_TEXT.test(text.replace(QUOTED_NAME, '').replace(UNITS, ''))
 }
 
 function isFormula(code: string | undefined): boolean {

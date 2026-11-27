@@ -1,9 +1,10 @@
+import { typedValue } from '../cosmetic/preview'
 import { DESIGN_MODE } from '../navigate'
 import { isPlaying, previewUi, redraw } from '../preview'
 import { crowdKeys } from '../preview/crowd'
-import { fireOneShot, isLiveOnStage, MAIN_TAG, setReaction } from '../preview/live'
+import { fireOneShot, isLiveOnStage, MAIN_TAG, resumeOnClock, setReaction, setSignalValue } from '../preview/live'
 import { setGameLook, syncOptionItems } from '../preview/menu'
-import { isReduced, ReactionEntry, ShotEntry, tryUi } from './live'
+import { isReduced, LevelEntry, levelText, ReactionEntry, ShotEntry, tryUi } from './live'
 import { registerLeftPanel } from './register'
 
 const TRY_PANEL = 'polyplus_nameplate_try'
@@ -29,10 +30,11 @@ export function setCrowdView(on: boolean) {
     redraw(false)
 }
 
-export function startPlaying() {
-    if (previewUi.playing || typeof Modes === 'undefined' || Modes.id !== DESIGN_MODE) return
+export function startPlaying(): boolean {
+    if (previewUi.playing || typeof Modes === 'undefined' || Modes.id !== DESIGN_MODE) return false
     const play = (BarItems as any).polyplus_nameplate_play as Action | undefined
     play?.trigger?.()
+    return previewUi.playing
 }
 
 const component = {
@@ -45,6 +47,14 @@ const component = {
             entry.on = !entry.on
             redraw(false)
         },
+        changeLevel(entry: LevelEntry, raw: unknown) {
+            const value = typedValue(raw)
+            if (value === null) return
+            setSignalValue(entry.signal, value)
+            entry.value = value
+            entry.text = levelText(entry, value)
+            redraw(false)
+        },
         fire(entry: ShotEntry) {
             if (!isLiveOnStage()) {
                 tryUi.shot = ''
@@ -52,12 +62,12 @@ const component = {
                 return
             }
             const keys = previewUi.crowd ? crowdKeys() : [MAIN_TAG]
+            if (startPlaying()) resumeOnClock()
             const fired = fireOneShot(entry.name, keys)
             tryUi.shot = entry.name
             tryUi.message = fired > 0
                 ? `Playing '${entry.label}'.`
                 : `'${entry.label}' is already playing. It plays to the end before it can start again.`
-            startPlaying()
             redraw(false)
         },
         changeSeed(value: number) {
@@ -87,7 +97,14 @@ const component = {
                     <input type="checkbox" :checked="entry.on" @click.stop="toggleReaction(entry)">
                     <label>{{ entry.label }}</label>
                 </div>
-                <p v-if="!ui.reactions.length" class="np-left-note">This nameplate doesn't react to anything the player does.</p>
+                <div v-for="entry in ui.levels" :key="entry.signal" class="np-try-level">
+                    <label>{{ entry.label }}: {{ entry.text }}</label>
+                    <div class="bar slider_input_combo">
+                        <input type="range" class="tool" :min="entry.min" :max="entry.max" :step="entry.step" :value="entry.value" @input="changeLevel(entry, $event.target.value)">
+                        <numeric-input class="tool" :value="entry.value" :step="entry.step" @input="changeLevel(entry, $event)" />
+                    </div>
+                </div>
+                <p v-if="!ui.reactions.length && !ui.levels.length" class="np-left-note">This nameplate doesn't react to anything the player does.</p>
 
                 <p class="panel_toolbar_label">Player's motion setting</p>
                 <div class="bar np-tick" title="Shows what players with Nameplate motion turned down see" @click="toggleReduced()">

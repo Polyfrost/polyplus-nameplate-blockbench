@@ -1,4 +1,4 @@
-import type { NameplateBlock, NameplateDetail, NameplatePreview, NameplateTagState } from '../engine'
+import type { NameplateBlock, NameplateDetail, NameplateLook, NameplateMotion, NameplatePreview, NameplateTagState } from '../engine'
 import { advanceOf, drawStyledText, shadowOf, TextStyle } from '../font'
 import { eraTextColor } from '../gpu'
 import { currentLook } from '../preview/options'
@@ -38,7 +38,7 @@ type LetterSource = {
         glyphX: Int32Array,
         glyphWidth: Int32Array,
         state?: NameplateTagState | null,
-        detail?: NameplateDetail,
+        look?: NameplateLook,
     ) => (LetterFrame & { mode: string }) | null
 }
 
@@ -74,6 +74,7 @@ type LetterOp = LetterRunOp | LetterGlyphOp
 
 interface LetterLook {
     detail: NameplateDetail
+    motion?: NameplateMotion
     still: boolean
 }
 
@@ -106,7 +107,7 @@ export function paintLetters(
     const layout = glyphLayout(name)
     if (!layout.chars.length || layout.chars.length > MAX_LETTERS) return null
     try {
-        const result = source.call(preview, variant, block, look.still ? 0 : frame, seed, layout.glyphX, layout.glyphWidth, state, look.detail)
+        const result = source.call(preview, variant, block, look.still ? 0 : frame, seed, layout.glyphX, layout.glyphWidth, state, look)
         if (!result || !result.moving || result.count !== layout.chars.length) return null
         if (result.mode !== 'owned' && result.mode !== 'motion') return null
         const owned = result.mode === 'owned' && layout.chars.length + otherRuns <= MAX_LETTERS

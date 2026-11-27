@@ -1,4 +1,4 @@
-import { GROUPS, NODE_SPECS, NodeSpec } from './catalog'
+import { GROUPS, NodeSpec, nodeSpecs } from './catalog'
 import { canAdd, MaterialJson } from './graph'
 
 export interface AddItem {
@@ -112,7 +112,7 @@ export function searchNodes(graph: MaterialJson, query: string): AddGroup[] {
     const searching = query.trim().length > 0
     const groups: AddGroup[] = []
     for (const group of GROUPS) {
-        const matches = NODE_SPECS
+        const matches = nodeSpecs()
             .map((spec, order) => ({ spec, order, score: spec.group === group.id ? matchScore(query, spec, group.label) : -1 }))
             .filter((entry) => entry.score >= 0)
         if (searching) matches.sort((a, b) => a.score - b.score || a.order - b.order)
@@ -126,7 +126,7 @@ export function searchNodes(graph: MaterialJson, query: string): AddGroup[] {
         })
     }
     if (searching) {
-        const best = (group: AddGroup) => Math.min(...group.items.map((item) => matchScore(query, NODE_SPECS.find((spec) => spec.type === item.type)!, group.label)))
+        const best = (group: AddGroup) => Math.min(...group.items.map((item) => matchScore(query, nodeSpecs().find((spec) => spec.type === item.type)!, group.label)))
         const order = new Map<string, number>(GROUPS.map((group, i) => [group.id, i]))
         groups.sort((a, b) => best(a) - best(b) || (order.get(a.id) ?? 0) - (order.get(b.id) ?? 0))
     }

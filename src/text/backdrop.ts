@@ -1,4 +1,4 @@
-import { layerLeft, layerTop, NameplateBlock, NameplateLayer, NameplatePreview } from '../engine'
+import { layerLeft, layerPasses, layerTop, NameplateBlock, NameplateLayer, NameplatePreview } from '../engine'
 import { currentLoad, lastResult, mainLayout, nameRow, paintFrame, previewUi } from '../preview'
 import { currentLook } from '../preview/options'
 import type { CrowdLayout } from '../preview/crowd'
@@ -98,13 +98,15 @@ function pixelAt(layers: NameplateLayer[], x: number, y: number): number {
         if (column < 0 || row < 0 || column >= layer.rasterWidth || row >= layer.rasterHeight) continue
         if (layer.mirrorX) column = layer.rasterWidth - 1 - column
         const index = (row * layer.rasterWidth + column) * 4
-        const alpha = (layer.rgba[index + 3] / 255) * (layer.opacity / 255)
-        if (alpha <= 0) continue
-        const out = alpha + a * (1 - alpha)
-        r = (layer.rgba[index] * alpha + r * a * (1 - alpha)) / out
-        g = (layer.rgba[index + 1] * alpha + g * a * (1 - alpha)) / out
-        b = (layer.rgba[index + 2] * alpha + b * a * (1 - alpha)) / out
-        a = out
+        for (const rgba of layerPasses(layer)) {
+            const alpha = (rgba[index + 3] / 255) * (layer.opacity / 255)
+            if (alpha <= 0) continue
+            const out = alpha + a * (1 - alpha)
+            r = (rgba[index] * alpha + r * a * (1 - alpha)) / out
+            g = (rgba[index + 1] * alpha + g * a * (1 - alpha)) / out
+            b = (rgba[index + 2] * alpha + b * a * (1 - alpha)) / out
+            a = out
+        }
     }
     const alpha = Math.round(a * 255)
     if (alpha <= 0) return -1
@@ -129,12 +131,12 @@ function sampleSeed(): number {
 
 function paintOn(preview: NameplatePreview, variant: string, block: NameplateBlock, frame: number): NameplateLayer[] {
     const look = currentLook()
-    return preview.paint(variant, block, look.still ? 0 : frame, sampleSeed(), null, look.detail)
+    return preview.paint(variant, block, look.still ? 0 : frame, sampleSeed(), null, look)
 }
 
 function withPlate(preview: NameplatePreview, variant: string, block: NameplateBlock, frame: number, rect: Rect): Rect {
     const look = currentLook()
-    const plate = preview.platePose(variant, block, look.still ? 0 : frame, sampleSeed(), null, look.detail)
+    const plate = preview.platePose(variant, block, look.still ? 0 : frame, sampleSeed(), null, look)
     return { ...rect, x: rect.x + plate.dx, y: rect.y + plate.dy }
 }
 
@@ -175,7 +177,7 @@ export function loopPixels(preview: NameplatePreview | null, variant: string, re
     }
     const block = on ?? blockSize()
     const look = currentLook()
-    const key = [variant, previewUi.seed, look.still, look.detail, block.width, block.height, rect.x, rect.y, rect.width, rect.height].join(',')
+    const key = [variant, previewUi.seed, look.still, look.detail, look.motion, block.width, block.height, rect.x, rect.y, rect.width, rect.height].join(',')
     let pixels = cache.get(key)
     if (!pixels) {
         const found = new Set<number>()

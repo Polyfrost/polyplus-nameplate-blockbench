@@ -1,14 +1,11 @@
-import * as EngineModule from '../../engine/PolyPlus-nameplate-engine.js'
 import { issueName, issueValue } from '../checks/codes'
-import { describe, ENGINE_CAPABILITIES, EngineIssue, materialLimits, wrapIssue } from '../engine'
+import { BundleBinary, describe, disposeLoad, EngineIssue, loadBundle, materialLimits } from '../engine'
 import { slugSpriteId, slugTextureId } from '../util/bundlePath'
 import { specOf } from './catalog'
 import { MaterialContext } from './context'
 import { MaterialJson, nodeSettings, nodesOf } from './graph'
 import { analyze, Analysis, MAX_SAMPLES } from './typing'
 import { costLimit, nodeWeigher, outlineFactor } from './weights'
-
-const api = EngineModule.org.polyfrost.polyplus.nameplate.engine.js
 
 const MATERIAL_ID = 'edited'
 const MATERIAL_PATH = `materials/${MATERIAL_ID}.json`
@@ -44,11 +41,9 @@ export function bundleFiles(graph: MaterialJson, context: MaterialContext): Reco
         const name = nodeSettings(node).name
         if (typeof name === 'string' && name && !(name in params)) params[name] = 0
     }
-    const requires = ['canvas', 'materials']
     const manifest: Record<string, unknown> = {
         format: 1,
         id: 'material_editor',
-        requires,
         fps: context.fps,
         loop: context.loop,
         layers: [{ id: LAYER_ID, depth: 'background' }],
@@ -74,32 +69,21 @@ export function usedTextures(graph: MaterialJson): string[] {
     return ids
 }
 
-function binaries(graph: MaterialJson, context: MaterialContext): EngineModule.org.polyfrost.polyplus.nameplate.engine.js.NameplateBinary[] {
-    const result: EngineModule.org.polyfrost.polyplus.nameplate.engine.js.NameplateBinary[] = []
+function binaries(graph: MaterialJson, context: MaterialContext): BundleBinary {
+    const result: BundleBinary = {}
     for (const id of usedTextures(graph)) {
         const bytes = context.textures[id]?.png?.()
-        if (bytes) result.push(new api.NameplateBinary(`textures/${id}.png`, bytes))
+        if (bytes) result[`textures/${id}.png`] = bytes
     }
     return result
 }
 
 function engineIssues(graph: MaterialJson, context: MaterialContext): { issues: EngineIssue[], cost: number | null } {
-    const files = Object.entries(bundleFiles(graph, context)).map(([path, text]) => new api.NameplateFile(path, text))
-    const assets = binaries(graph, context)
-    const load = api.nameplateLoad(files, ENGINE_CAPABILITIES, assets)
-    const issues: EngineIssue[] = Array.from(load.issues).map(wrapIssue)
+    const load = loadBundle(bundleFiles(graph, context), binaries(graph, context))
+    disposeLoad(load)
+    const issues: EngineIssue[] = load.issues.slice()
     if (load.skipped) issues.push({ path: '', message: `The game would skip this effect: ${load.skipped}` })
-    let cost: number | null = null
-    if (load.preview) {
-        try {
-            for (const entry of Array.from(api.nameplateMaterialCosts(load.preview))) {
-                if (entry.id === MATERIAL_ID) cost = entry.cost
-            }
-        } catch {
-            cost = null
-        }
-    }
-    return { issues, cost }
+    return { issues, cost: null }
 }
 
 function settingLabel(type: string, key: string): string {

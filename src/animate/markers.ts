@@ -37,7 +37,7 @@ function timings(): Map<string, ScheduleTiming> {
 }
 
 function visibleFrames(fps: number, timing: ScheduleTiming): number {
-    const period = Math.max(1, timing.window * timing.step)
+    const period = Math.max(1, timing.window)
     let seconds = 0
     try {
         const timeline = (globalThis as any).Timeline
@@ -111,7 +111,7 @@ function fitScheduleView(animation: any, fps: number) {
         return
     }
     const timing = timingOf(animation)
-    const period = timing ? Math.max(1, timing.window * timing.step) : settings.window
+    const period = timing ? Math.max(1, timing.window) : settings.window
     const key = JSON.stringify([animation.uuid, period, fps])
     if (key === fitted.key) return
     const body = typeof document === 'undefined' ? null : document.getElementById('timeline_body')

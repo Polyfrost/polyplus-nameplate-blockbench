@@ -2,7 +2,6 @@ import { limited, noteLimit } from '../elements/limits'
 import { readSettings, scheduleOf, triggerOf } from '../animate/props'
 import { layerNodes } from '../elements/nodes'
 import { DEPTHS } from '../elements/read'
-import { nameplateLimits } from '../engine'
 import { BODY_TYPE, LOOP_ANIMATION, NameplateData } from '../model'
 import { openMaterialEditor } from '../nodes'
 import { commit, notifyNameplateChanged, readNameplate } from '../palette/state'
@@ -24,7 +23,6 @@ type Result = Record<string, any>
 const SLOT_NODES = new Set(['Slot'])
 const RAMP_NODES = new Set(['Quantize', 'DitherQuantize', 'Cycle'])
 const SLOT_READERS = new Set(['Slot', 'Quantize', 'DitherQuantize', 'Cycle', 'Sprite'])
-const NEAR_LIMIT = 0.75
 const MERGE_MS = 800
 const NEW_PARAM: ParamRange = { label: '', min: 0, max: 2, step: 0.05 }
 const PARAM_KEY = 'param__'
@@ -74,11 +72,8 @@ function readsSlots(graph: MaterialGraph, info: EffectInfo | null): boolean {
 }
 
 function statesText(info: EffectInfo): string {
-    const limit = nameplateLimits().states
-    const what = `This effect shows **${info.states}** different ${pluralWord(info.states, 'picture')}. The limit is ${limit}.${info.shotStates > 0 ? ` Its one-shots add ${info.shotStates} more.` : ''}`
-    if (info.states > limit) return `${what} **Over the limit**: raise 'Hold each frame for', or use fewer keyframes on its settings.`
-    if (info.states >= limit * NEAR_LIMIT) return `${what} **Close to the limit**: more keyframes on its settings, or a lower 'Hold each frame for', may push it over.`
-    return what
+    const shots = info.shotStates > 0 ? ` Its one-shots can add up to ${info.shotStates} more.` : ''
+    return `This effect shows **${info.states}** different ${pluralWord(info.states, 'picture')} over the loop.${shots}`
 }
 
 function shownCurve(fps: number, loop: number): CurveSpec {
@@ -108,11 +103,9 @@ function curveText(info: EffectInfo, name: string, fps: number, loop: number): s
 
 function animatedConfig(config: FormConfig, graph: MaterialGraph, info: EffectInfo | null) {
     const reads = info ? info.reads : paramNamesOf(graph)
-    if (reads.length === 0) return
-    config.animate_title = bold('Animated settings')
-    config.animate_note = { type: 'info', text: "To animate a setting, add keyframes on its 'Setting: ...' row in Animate. Random animations can't." }
     const view = effectsView()
-    if (!info || !view) return
+    if (reads.length === 0 || !info || !view) return
+    config.animate_title = bold('Animated settings')
     for (const name of info.animated.filter((entry) => reads.includes(entry))) {
         config[`curve__${name}_note`] = dynamicInfo(curveText(info, name, view.fps, view.loop))
     }

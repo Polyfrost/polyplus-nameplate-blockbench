@@ -1,22 +1,26 @@
 import {
     BlockRect,
     displayBlock,
-    drawLayers,
+    drawPlateLayers,
     layerBounds,
     lineBlock,
     NameplateBadgePose,
     NameplateBlock,
     NameplateDetail,
+    NameplateLook,
+    NameplateMotion,
     NameplateLayer,
     NameplatePreview,
     NameplateTagState,
     placedBlock,
+    PLATE_OPACITY,
     STILL_BADGE,
 } from '../engine'
 import { tagState } from './live'
 import { BadgeLook, drawBadgeArt, PLAIN_BADGE } from '../badge/art'
 import { drawText } from '../font'
 import { eraTextColor } from '../gpu'
+import { underBackground } from '../gpu/order'
 import { readNameplate } from '../palette/state'
 import { BADGE_CELLS_HIGH, BADGE_CELLS_WIDE, badgeRect, loopPixels } from '../text/backdrop'
 import { resolveBadge } from '../text/contrast'
@@ -93,6 +97,7 @@ export type CrowdLayout = Omit<CrowdTag, 'key' | 'seed' | 'layers' | 'plate' | '
 
 export interface CrowdPaint {
     detail: NameplateDetail
+    motion?: NameplateMotion
     still: boolean
     padding: TagPadding | null
 }
@@ -111,13 +116,21 @@ export function tagPoses(
     frame: number,
     seed: number,
     state: NameplateTagState | null,
-    detail: NameplateDetail,
+    look: NameplateLook,
 ): TagPoses {
     try {
-        const plate = preview.platePose(variant, block, frame, seed, state, detail)
-        const follow = preview.badgeFollow(variant, block, frame, seed, state, detail)
-        const own = preview.badgePose(frame, seed, state, detail)
-        return { plate, badge: { ...own, dx: own.dx + follow.dx + plate.dx, dy: own.dy + follow.dy + plate.dy } }
+        const plate = preview.platePose(variant, block, frame, seed, state, look)
+        const follow = preview.badgeFollow(variant, block, frame, seed, state, look)
+        const own = preview.badgePose(frame, seed, state, look)
+        return {
+            plate,
+            badge: {
+                dx: own.dx + follow.dx + plate.dx,
+                dy: own.dy + follow.dy + plate.dy,
+                opacity: Math.round((own.opacity * follow.opacity) / 255),
+                visible: own.visible && follow.visible,
+            },
+        }
     } catch (error) {
         console.error('[polyplus_nameplate] badge preview failed', error)
         return { plate: STILL_BADGE, badge: STILL_BADGE }
@@ -222,8 +235,8 @@ export function paintCrowd(
             layout.badge = { x: rect.x, y: rect.y }
         }
         const state = stateFor(key, tagSeed)
-        const layers = preview.paint(variant, layout.block, painted, tagSeed, state, look.detail).filter(keep)
-        const poses = tagPoses(preview, variant, layout.block, painted, tagSeed, state, look.detail)
+        const layers = preview.paint(variant, layout.block, painted, tagSeed, state, look).filter(keep)
+        const poses = tagPoses(preview, variant, layout.block, painted, tagSeed, state, look)
         const badgeLook = layout.badge ? crowdBadgeLook(preview, variant, style, layout) : null
         const otherRuns = (spec.rank?.trim() ? 1 : 0) + (spec.badge && !pinned ? 1 : 0)
         const letters = paintLetters(preview, variant, layout.block, frame, tagSeed, state, look, spec.name, otherRuns)
@@ -348,6 +361,21 @@ export function fillBackground(ctx: CanvasRenderingContext2D, rect: BlockRect, c
     ctx.fillRect(originX + rect.x0 * scale, originY + rect.y0 * scale, (rect.x1 - rect.x0) * scale, (rect.y1 - rect.y0) * scale)
 }
 
+export function drawUnderText(
+    ctx: CanvasRenderingContext2D,
+    layers: NameplateLayer[],
+    fill: (() => void) | null,
+    scale: number,
+    originX: number,
+    originY: number,
+    opacity = PLATE_OPACITY,
+) {
+    const below = layers.filter((layer) => layer.depth !== FRONT_DEPTH)
+    drawPlateLayers(ctx, below.filter((layer) => underBackground(layer.depth)), scale, originX, originY, opacity)
+    fill?.()
+    drawPlateLayers(ctx, below.filter((layer) => !underBackground(layer.depth)), scale, originX, originY, opacity)
+}
+
 export function drawCrowd(
     ctx: CanvasRenderingContext2D,
     placed: CrowdPlacement[],
@@ -355,14 +383,15 @@ export function drawCrowd(
     pad: number,
     background: boolean,
     name?: NameDrawer,
+    plateOpacity = PLATE_OPACITY,
 ) {
     ctx.imageSmoothingEnabled = false
     for (const entry of placed) {
         const tag = entry.tag
         const originX = (pad + entry.x - entry.box.minX) * scale
         const originY = (pad + entry.y - entry.box.minY) * scale
-        if (background) fillBackground(ctx, tag.background, tag.padded ? backgroundColor() : VANILLA_BACKGROUND, scale, originX, originY)
-        drawLayers(ctx, tag.layers.filter((layer) => layer.depth !== FRONT_DEPTH), scale, originX, originY)
+        const fill = background ? () => fillBackground(ctx, tag.background, tag.padded ? backgroundColor() : VANILLA_BACKGROUND, scale, originX, originY) : null
+        drawUnderText(ctx, tag.layers, fill, scale, originX, originY, plateOpacity)
         ctx.save()
         for (const run of tag.runs) drawRun(ctx, movedRun(run, tag.plate), scale, originX, originY, name, tag.letters)
         const pose = tag.badgePose ?? STILL_BADGE
@@ -372,6 +401,6 @@ export function drawCrowd(
             ctx.globalAlpha = 1
         }
         ctx.restore()
-        drawLayers(ctx, tag.layers.filter((layer) => layer.depth === FRONT_DEPTH), scale, originX, originY)
+        drawPlateLayers(ctx, tag.layers.filter((layer) => layer.depth === FRONT_DEPTH), scale, originX, originY, plateOpacity)
     }
 }

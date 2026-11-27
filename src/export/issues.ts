@@ -43,6 +43,7 @@ import { looseLayerId, looseSpriteId } from '../util/bundlePath'
 import { hasProject } from '../util/project'
 import { isPaintDragging } from '../util/paintDrag'
 import { findTexture } from '../util/texture'
+import { fullCheckProblems } from './fullChecks'
 
 export type { IssueCode } from '../checks'
 export { classifyIssue, issueCode } from '../checks'
@@ -350,7 +351,7 @@ function freshProblems(): ProjectProblems {
     const checked = SOURCES.flatMap(run)
     const blocking = checked.filter((problem) => problem.level === 'error' && problem.covers)
     const open = (issue: BundleIssue) => !blocking.some((problem) => problem.covers!(issue.path))
-    const errors = [...explain(bundle.issues.filter(open), 'error'), ...checked.filter((problem) => problem.level === 'error')]
+    const errors = [...fullCheckProblems(bundle), ...explain(bundle.issues.filter(open), 'error'), ...checked.filter((problem) => problem.level === 'error')]
     const warnings = [...explain(bundle.warnings ?? [], 'warning'), ...checked.filter((problem) => problem.level === 'warning')]
     return { errors, warnings }
 }

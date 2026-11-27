@@ -1,6 +1,11 @@
 import { rgbHex } from '../palette/color'
 import { Backdrop, currentLook, previewOptions, WorldLight } from '../preview/options'
-import { Light } from './renderer'
+
+export interface Light {
+    r: number
+    g: number
+    b: number
+}
 
 export const LIGHT_COLORS: Record<WorldLight, Light> = {
     day: { r: 1, g: 1, b: 1 },

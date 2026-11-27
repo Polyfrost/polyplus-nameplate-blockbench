@@ -81,7 +81,7 @@ export function budgetText(facts: IssueFacts): string | null {
     switch (facts.code) {
         case 'over_cpu':
             return cpuText(values)
-        case 'over_quads':
+        case 'quads_over_budget':
             return `The nameplate draws up to ${count(value(values, 'quads') ?? 0)} shapes. The limit is ${count(limit)}. Use fewer or simpler layers, particles or repeats.`
         case 'over_cache':
             return `The nameplate keeps ${kilobytes(value(values, 'bytes') ?? 0)} of pictures in memory. The limit is ${kilobytes(limit)}. Use fewer frames or smaller sprites.`

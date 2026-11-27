@@ -1,5 +1,5 @@
 import { materialLimits, materialNodeCost } from '../engine'
-import { NODE_SPECS, NodeSpec } from './catalog'
+import { NodeSpec, nodeSpecs } from './catalog'
 import { MAX_COST, OUTLINE_FACTOR, TONE_COST, Weigher } from './typing'
 
 const WIDTHS = [1, 2, 3, 4]
@@ -25,7 +25,7 @@ function weightKey(type: string, variant: number): string {
 function readAll(): WeightTable {
     const weights = new Map<string, number>()
     const missing: string[] = []
-    for (const spec of NODE_SPECS) {
+    for (const spec of nodeSpecs()) {
         for (const variant of VARIANTS[spec.cost]) {
             const key = weightKey(spec.type, variant)
             const cost = materialNodeCost(spec.type, variant)

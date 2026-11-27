@@ -1,7 +1,5 @@
 import { isNameplateActive } from '../format'
 import { Channel } from '../model'
-import { isParamChannel, paramOfChannel } from '../material/params'
-import { MATERIALS_PROPERTY } from '../material/types'
 import { defaultWith, hideWhen, patchKeyframeProperties, resolveCondition } from '../util/keyframePatch'
 import { disposeAllReversed } from '../util/teardown'
 
@@ -33,13 +31,7 @@ export function channelSet(channels: Channel[]): Record<string, Record<string, u
 function nameplateChannelOf(point: any): string | undefined {
     if (!isNameplateActive()) return undefined
     const channel = point?.keyframe?.channel
-    return typeof channel === 'string' && (NAMEPLATE_CHANNELS.has(channel) || isParamChannel(channel)) ? channel : undefined
-}
-
-function paramDefault(channel: string): string {
-    const name = paramOfChannel(channel)
-    const value = name && typeof Project !== 'undefined' && Project ? (Project as any)[MATERIALS_PROPERTY]?.params?.[name] : undefined
-    return typeof value === 'number' && isFinite(value) ? String(value) : '0'
+    return typeof channel === 'string' && NAMEPLATE_CHANNELS.has(channel) ? channel : undefined
 }
 
 export function patchKeyframeFields(): () => void {
@@ -59,7 +51,6 @@ export function patchKeyframeFields(): () => void {
             wrap: defaultWith((point) => {
                 const channel = nameplateChannelOf(point)
                 if (channel && ONE_DEFAULT_CHANNELS.has(channel)) return '1'
-                if (channel && isParamChannel(channel)) return paramDefault(channel)
                 return undefined
             }),
         },

@@ -11,6 +11,10 @@ function rank(depth: string): number {
     return DEPTH_RANK[depth] ?? DEPTH_RANK.background
 }
 
+export function underBackground(depth: string): boolean {
+    return rank(depth) <= DEPTH_RANK.background
+}
+
 export function inDrawOrder<T extends Pick<NameplateLayer, 'depth' | 'index'>>(layers: readonly T[]): T[] {
     return layers.slice().sort((a, b) => rank(a.depth) - rank(b.depth) || a.index - b.index)
 }

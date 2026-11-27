@@ -1,17 +1,16 @@
 import { setBinarySource } from '../engine'
+import { onProjectLoaded } from '../format'
 import { registerEffectActions } from './actions'
 import { materialBinary } from './compile'
-import { defineEffectType, syncEffectParamChannels } from './element'
-import { registerParamKeyMenu } from './keys'
+import { defineEffectType, takeDroppedParamTracks } from './element'
 import { isPng, toBase64 } from './png'
-import { commitMaterials, onMaterialsChanged, readMaterials, registerMaterialsState, unregisterMaterialsState } from './state'
+import { commitMaterials, readMaterials, registerMaterialsState, unregisterMaterialsState } from './state'
 import { MATERIAL_ID } from './types'
 
 export { ACTION_ADD_EFFECT, addEffect, startAddEffect } from './actions'
 export { applyMaterials, materialBinary, usesMaterials } from './compile'
-export { effectType, materialTypeFor, syncEffectParamChannels } from './element'
-export { effectReads, isParamChannel, PARAM_BASE, PARAM_PREFIX, paramChannel, paramOfChannel, importParamKeys, readParamKeys } from './params'
-export type { ParamKeyPlan } from './params'
+export { effectType, materialTypeFor } from './element'
+export { isParamChannel, PARAM_PREFIX } from './params'
 export { addMaterialTextures, isMaterialFilePath, missingMaterialFiles, planMaterials } from './import'
 export type { MaterialLayerPlan } from './import'
 export { onMaterialsChanged, readMaterials, writeMaterials } from './state'
@@ -40,15 +39,7 @@ export function registerMaterials() {
             return () => defined.dispose()
         },
         registerEffectActions,
-        registerParamKeyMenu,
-        () => {
-            const removeListener = onMaterialsChanged(syncEffectParamChannels)
-            const hooks = [Blockbench.on('select_animation', syncEffectParamChannels), Blockbench.on('select_project', syncEffectParamChannels)]
-            return () => {
-                removeListener()
-                for (const hook of hooks) hook.delete()
-            }
-        },
+        () => onProjectLoaded(() => takeDroppedParamTracks().map((track) => `Removed ${track}: the game can't animate effect settings`)),
         () => {
             setBinarySource(() => materialBinary(readMaterials()))
             return () => setBinarySource(null)

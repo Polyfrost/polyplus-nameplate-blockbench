@@ -1,4 +1,4 @@
-import { BlockRect, BundleBinary, drawLayers, layerBounds, lineBlock, loadBundle, NameplateBlock, NameplateLayer, NameplatePreview } from '../engine'
+import { BlockRect, BundleBinary, drawLayers, layerBounds, lineBlock, loadBundle, NameplateBlock, NameplateLayer, NameplatePreview, PreviewSlot } from '../engine'
 import { drawStyledText, measure, textStyle } from '../font'
 import { mainLayout, nameRow, previewName } from '../preview'
 import { MaterialContext } from './context'
@@ -60,7 +60,13 @@ export class MaterialPreview {
     private readonly caption: HTMLElement
     private readonly playButton: HTMLButtonElement
     private readonly backdropButton: HTMLButtonElement
-    private preview: NameplatePreview | null = null
+    private held = new PreviewSlot()
+    private get preview(): NameplatePreview | null {
+        return this.held.current
+    }
+    private set preview(next: NameplatePreview | null) {
+        this.held.set(next)
+    }
     private tag: Tag = fallbackTag()
     private frames = new Map<number, NameplateLayer[]>()
     private frame = 0

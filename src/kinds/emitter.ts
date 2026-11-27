@@ -89,7 +89,7 @@ export function emitterJson(layer: EmitterData, spriteIds: SpriteIds, issues: Bu
     file.gravity = layer.gravity.slice()
     file.drift = layer.drift.slice()
     if (layer.wobble) file.wobble = { x: layer.wobble.x, y: layer.wobble.y, period: layer.wobble.period }
-    file.frames = layer.frames
+    file.frames = layer.frames === 'stretch' ? 'life' : layer.frames
     if (layer.fade) file.fade = { after: layer.fade.after, to: layer.fade.to, steps: layer.fade.steps }
     if (layer.breakpoints.length > 0) {
         file.breakpoints = breakpointsJson(layer.breakpoints, null, spriteIds, layer.id, issues, false)
@@ -141,7 +141,7 @@ export function emitterProps(id: string, file: any, context: MotionPlanContext, 
             wobbleOn: !!wobble,
             wobble: wobble ? [wholeOr(wobble.x, 0), wholeOr(wobble.y, 0)] : [1, 0],
             wobblePeriod: wobble ? Math.max(1, wholeOr(wobble.period, 1)) : 8,
-            particleFrames: file.frames === 'stretch' ? 'stretch' : 'loop',
+            particleFrames: file.frames === 'life' || file.frames === 'stretch' ? 'stretch' : 'loop',
             fadeOn: !!fade,
             fadeAfter: fade ? decimalOr(fade.after, 0) : 0.5,
             fadeTo: fade ? decimalOr(fade.to, 0) : 0,

@@ -1,6 +1,7 @@
 import { currentBundle } from '../compile'
 import { bodyCorners, Corners, readCorners } from '../corners/shape'
-import { stopPlayback, updateItems } from '../design/stage'
+import { stopPlayback } from '../design/playback'
+import { updateItems } from '../design/stage'
 import { readLayers } from '../elements'
 import { findNode, layerNodes } from '../elements/nodes'
 import { layerLeft, layerTop, NameplateLayer, NameplatePreview } from '../engine'

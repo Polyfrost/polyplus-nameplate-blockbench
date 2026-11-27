@@ -1,3 +1,4 @@
+import { onFullChecks } from '../compile'
 import { onHeavy } from '../design/events'
 import { onPaintDragEnd, watchPaintDrags } from '../util/paintDrag'
 import { ProblemButton, projectProblems, ProjectProblems, showProblemTarget } from '../export/issues'
@@ -145,7 +146,7 @@ export function registerChecksPanel(): () => void {
         component,
     })
     panel = registration.panel
-    const removers = [onHeavy(refreshChecks), onCostReport(rebuild), onPaintDragEnd(refreshChecks), watchPaintDrags()]
+    const removers = [onHeavy(refreshChecks), onFullChecks(refreshChecks), onCostReport(rebuild), onPaintDragEnd(refreshChecks), watchPaintDrags()]
     refreshChecks()
     return () => {
         disposeAll(removers)

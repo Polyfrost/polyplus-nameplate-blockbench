@@ -10,7 +10,6 @@ import {
 } from './props'
 import { secondsText } from '../format'
 import { sameMolang } from '../molang/keys'
-import { paramLabel, paramOfChannel } from '../material/params'
 import { closingKeys, closingSpeed, curvedMolangKeys } from './curves'
 import { LIMITS } from '../motion/types'
 import { reactionPaletteIssues } from '../palanim/reaction'
@@ -92,8 +91,6 @@ export function scheduleGroups(animations: AnimationData[], layers: LayerData[])
 }
 
 export function channelName(channel: string): string {
-    const param = paramOfChannel(channel)
-    if (param) return `Setting '${paramLabel(param)}'`
     return CHANNEL_NAMES[channel] ?? channel.charAt(0).toUpperCase() + channel.slice(1)
 }
 
@@ -420,26 +417,6 @@ function checkSchedule(
                 animation,
                 '.schedule',
                 `${label} takes turns with '${first.name}' (schedule '${group.id}'), so both need the same window, delay and chance (${differs.join(', ')}). Open its properties and confirm to copy them over.`,
-            )
-        }
-    }
-
-    const step = group.step
-    if (step > 1) {
-        const odd: string[] = []
-        if (schedule.window % step !== 0) odd.push(`window ${schedule.window}`)
-        if (schedule.jitter % step !== 0) odd.push(`delay ${schedule.jitter}`)
-        if (animation.length % step !== 0) odd.push(`length ${animation.length}`)
-        for (const track of keyedTracks(animation)) {
-            for (const key of track.keys) {
-                if (key.step % step !== 0) odd.push(`${channelName(track.channel)} keyframe on ${targetName(track.target)} at frame ${key.step}`)
-            }
-        }
-        if (odd.length > 0) {
-            fail(
-                animation,
-                '.schedule.step',
-                `${label} moves layers that hold each frame for ${step} frames, so its timing must be in multiples of ${step} frames: ${odd.slice(0, 4).join(', ')}${odd.length > 4 ? ' and more' : ''}.`,
             )
         }
     }
