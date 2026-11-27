@@ -1,11 +1,17 @@
-import { currentBundle } from './compile'
+import { reactionLabel } from './animate/props'
+import { compiledLoad, currentBundle, forgetCompiled } from './compile'
 import { onHeavy, retainEvents } from './design/events'
 import { isGroupNode, isLayerNode, walkNodes } from './elements/nodes'
 import { readLayers } from './elements'
 import {
     describe,
+    holdPreview,
     loadBundle,
     LoadedBundle,
+    onEngineReady,
+    previewOfLoad,
+    PreviewSlot,
+    releasePreview,
     NameplateBadgePose,
     NameplateBlock,
     NameplateLayer,
@@ -16,7 +22,7 @@ import {
 import { DEFAULT_FPS, DEFAULT_LOOP_FRAMES, isNameplateActive, onFormatActivation } from './format'
 import { BundleIssue, LOOP_ANIMATION } from './model'
 import { CrowdLayout, CrowdSpec, CrowdTag, layoutTag, paintCrowd, tagPoses } from './preview/crowd'
-import { absoluteFrame, MAIN_TAG, REACTION_LABELS, resetLive, scrubState, ScrubPlan, tagState } from './preview/live'
+import { MAIN_TAG, pauseLive, REACTION_LABELS, resetLive, scrubState, ScrubPlan, stageFrame, tagState } from './preview/live'
 import { registerPreviewPanel } from './preview/panel'
 import { clearPreviewOptions } from './preview/menu'
 import { currentLook, effectLayers, LINE_ABOVE, LINE_BELOW, previewOptions, rankAdvance, resetOptions, tagPadding } from './preview/options'
@@ -148,12 +154,35 @@ let dirty = true
 let active = false
 let override: PreviewOverride | null = null
 let kept: { project: string, preview: NameplatePreview, order: string[] } | null = null
+const keptSlot = new PreviewSlot()
+const loadedSlot = new PreviewSlot()
+const derivedSlot = new PreviewSlot()
 let parsed: { files: Record<string, string> | null, animations: Record<string, any> } = { files: null, animations: {} }
 let derived: { files: Record<string, string> | null, override: PreviewOverride | null, random: string, load: LoadedBundle | null } = {
     files: null,
     override: null,
     random: '',
     load: null,
+}
+
+function evict(files: Record<string, string>) {
+    const load = cache.get(files)
+    cache.delete(files)
+    releasePreview(previewOfLoad(load))
+}
+
+function clearCache() {
+    for (const files of Array.from(cache.keys())) evict(files)
+}
+
+function releaseAll() {
+    clearCache()
+    kept = null
+    keptSlot.clear()
+    loaded = null
+    loadedSlot.clear()
+    derived = { files: null, override: null, random: '', load: null }
+    derivedSlot.clear()
 }
 
 export function loadFiles(files: Record<string, string>): LoadedBundle {
@@ -163,9 +192,10 @@ export function loadFiles(files: Record<string, string>): LoadedBundle {
         cache.set(files, hit)
         return hit
     }
-    const result = loadBundle(files)
+    const result = compiledLoad(files) ?? loadBundle(files)
     cache.set(files, result)
-    while (cache.size > CACHE_LIMIT) cache.delete(cache.keys().next().value!)
+    holdPreview(previewOfLoad(result))
+    while (cache.size > CACHE_LIMIT) evict(cache.keys().next().value!)
     return result
 }
 
@@ -261,9 +291,22 @@ function inAnimateMode(): boolean {
     return typeof Modes !== 'undefined' && !!Modes && !!Modes.animate
 }
 
+function timelineTime(): number {
+    return typeof Timeline !== 'undefined' && Timeline ? Number(Timeline.time) || 0 : 0
+}
+
 function timelineFrame(fps: number): number {
-    const time = typeof Timeline !== 'undefined' && Timeline ? Timeline.time || 0 : 0
-    return Math.max(0, Math.floor(time * fps + FRAME_EPSILON))
+    return Math.max(0, Math.floor(timelineTime() * fps + FRAME_EPSILON))
+}
+
+export function playbackRate(speed: unknown): number {
+    const value = typeof speed === 'number' ? speed : typeof speed === 'string' && speed.trim() ? Number(speed) : NaN
+    return Number.isFinite(value) && value >= 0 ? value / 100 : 1
+}
+
+function timelineRate(): number {
+    if (!inAnimateMode() || typeof Timeline === 'undefined' || !Timeline) return 1
+    return playbackRate(Timeline.playback_speed)
 }
 
 function currentFrame(preview: NameplatePreview): number {
@@ -283,7 +326,7 @@ export function mainSeed(): number {
 export function paintFrame(preview: NameplatePreview, frame: number, state?: NameplateTagState | null, variant = previewUi.variant): NameplateLayer[] {
     const tag = state === undefined ? tagState(MAIN_TAG, variant, frame, mainSeed()) : state
     const look = currentLook()
-    return preview.paint(variant, mainLayout().block, look.still ? 0 : frame, mainSeed(), tag, look.detail)
+    return preview.paint(variant, mainLayout().block, look.still ? 0 : frame, mainSeed(), tag, look)
 }
 
 function effectFilter(files: Record<string, string>, variant: string): (layer: NameplateLayer) => boolean {
@@ -397,6 +440,7 @@ function derivedLoad(random: string): LoadedBundle | null {
     }
     if (files && random) files = pickedNow(files, random)
     derived = { files: compiledFiles, override, random, load: files ? loadFiles(files) : null }
+    derivedSlot.set(derived.load)
     return derived.load
 }
 
@@ -425,7 +469,7 @@ function driftFrame(preview: NameplatePreview, local: number): number {
 function planNote(plan: AnimatePlan): string {
     switch (plan.kind) {
         case 'while':
-            return `Showing '${plan.name}': the player is ${(REACTION_LABELS[plan.reaction ?? ''] ?? plan.reaction ?? '').toLowerCase()} the whole time.`
+            return `Showing '${plan.name}': the player is ${(REACTION_LABELS[plan.reaction ?? ''] ?? reactionLabel(plan.reaction ?? '')).toLowerCase()} the whole time.`
         case 'shot':
             return `Showing '${plan.name}' as if it started at 0 s. Once it ends, the loop shows.`
         case 'random':
@@ -463,27 +507,30 @@ function paintDrawable(drawable: Drawable, hidden: Set<string>): Painted {
         const scrub: ScrubPlan = { reaction: plan.reaction, shot: plan.kind === 'shot' ? plan.name : null }
         stateFor = (key, tagSeed = seed) => scrubState(preview, key, variant, frame, scrub, tagSeed)
     } else {
-        local = currentFrame(preview)
-        frame = absoluteFrame(preview, local, isPlaying())
+        const placed = stageFrame(preview, currentFrame(preview), isPlaying(), inAnimateMode(), undefined, timelineRate())
+        frame = placed.frame
+        local = placed.local
+        if (placed.control !== null) previewUi.frame = placed.control
         stateFor = (key, tagSeed = seed) => tagState(key, variant, frame, tagSeed)
     }
     const label = scrubbing ? `${plan.name} frame` : 'frame'
     const note = notes.filter(Boolean).join(' ')
     if (previewUi.crowd) {
-        const paint = { detail: look.detail, still: look.still, padding: tagPadding() }
+        const paint = { detail: look.detail, motion: look.motion, still: look.still, padding: tagPadding() }
         const crowd = paintCrowd(preview, variant, frame, seed, nameWidthOf, keep, mainSpec(), stateFor, paint)
         return { frame, local, layers: [], badge: STILL_BADGE, plate: STILL_BADGE, crowd, note, label }
     }
     const state = stateFor(MAIN_TAG)
     const layers = paintFrame(preview, frame, state, variant).filter(keep)
     const letters = paintLetters(preview, variant, mainLayout().block, frame, mainSeed(), state, look, previewName(), (previewOptions.rank.trim() ? 1 : 0) + 1)
-    const poses = tagPoses(preview, variant, mainLayout().block, look.still ? 0 : frame, mainSeed(), state, look.detail)
+    const poses = tagPoses(preview, variant, mainLayout().block, look.still ? 0 : frame, mainSeed(), state, look)
     return { frame, local, layers, badge: poses.badge, plate: poses.plate, letters, crowd: [], note, label }
 }
 
 function remember(drawable: Drawable) {
     if (drawable.banner?.kind === 'stale') return
     kept = { project: projectKey(), preview: drawable.preview, order: drawable.order }
+    keptSlot.set(drawable.preview)
 }
 
 function adopt(preview: NameplatePreview) {
@@ -500,6 +547,7 @@ function refresh() {
         compiledIssues = bundle.issues
         compiledFiles = bundle.files
         loaded = loadFiles(bundle.files)
+        loadedSlot.set(loaded)
         dirty = false
     }
     previewUi.issues = compiledIssues
@@ -597,11 +645,24 @@ export function registerPreview() {
         }),
         registerPreviewPanel,
         registerGpu,
+        () => onEngineReady(() => {
+            forgetCompiled()
+            clearCache()
+            redraw(true)
+        }),
     ]
     for (const step of steps) handles.removers.push(step())
     for (const name of PREVIEW_EVENTS) {
-        handles.listeners.push(Blockbench.on(name, () => redraw(name === 'select_mode')))
+        handles.listeners.push(Blockbench.on(name, () => {
+            if (name === 'timeline_pause') pauseLive()
+            redraw(name === 'select_mode')
+        }))
     }
+    handles.listeners.push(Blockbench.on('close_project' as any, () => {
+        forgetCompiled()
+        releaseAll()
+        dirty = true
+    }))
     redraw(true)
 }
 
@@ -610,13 +671,11 @@ export function unregisterPreview() {
     disposeAll(handles.listeners)
     disposeAll(handles.removers)
     subscribers.clear()
-    cache.clear()
-    loaded = null
+    releaseAll()
+    forgetCompiled()
     last = null
     override = null
-    kept = null
     parsed = { files: null, animations: {} }
-    derived = { files: null, override: null, random: '', load: null }
     compiledFiles = {}
     compiledIssues = []
     dirty = true

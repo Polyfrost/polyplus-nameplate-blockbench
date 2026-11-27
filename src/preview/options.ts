@@ -1,26 +1,26 @@
-import { BlockRect, NameplateDetail } from '../engine'
+import { BlockRect, NameplateDetail, NameplateMotion } from '../engine'
 import { parseJsonOrNull } from '../util/json'
 import { wholeClamped } from '../util/num'
 import { measure } from '../font'
 
-export type GameLook = 'full' | 'v1214' | 'v1211' | 'v189' | 'cpu' | 'none' | 'reduced' | 'off'
+export type GameLook = 'full' | 'v1214' | 'v1211' | 'v189' | 'cpu' | 'none' | 'far' | 'distant' | 'reduced' | 'off'
 
 export type ShadowColor = 'glyph' | 'vanilla'
 
 export interface LookSpec {
     label: string
     detail: NameplateDetail
+    motion: NameplateMotion
     still: boolean
     effects: boolean
     vanillaShadow: boolean
     gpu: boolean
     shadow: ShadowColor
     legacy: boolean
-    inlineBadge: boolean
     note: string
 }
 
-const MODERN = { detail: 'full', still: false, effects: true, vanillaShadow: false, gpu: true, shadow: 'glyph', legacy: false, inlineBadge: false } as const
+const MODERN = { detail: 'full', motion: 'full', still: false, effects: true, vanillaShadow: false, gpu: true, shadow: 'glyph', legacy: false } as const
 
 const CPU_EFFECTS = 'basic effects: no "Glows in the dark", block textures stand still and screen effects follow the tag.'
 
@@ -32,25 +32,21 @@ export const LOOKS: Record<GameLook, LookSpec> = {
     },
     v1214: {
         ...MODERN,
-        label: '1.21.5 and 1.21.4 (basic effects)',
-        gpu: false,
-        note: `1.21.5 and 1.21.4: ${CPU_EFFECTS}`,
+        label: '1.21.5 and 1.21.4 (full effects)',
+        note: '1.21.5 and 1.21.4: effects look the same as on newer versions.',
     },
     v1211: {
         ...MODERN,
-        label: '1.21.1 (basic effects, plain shadow)',
-        gpu: false,
+        label: '1.21.1 (full effects, plain shadow)',
         shadow: 'vanilla',
-        note: `1.21.1: ${CPU_EFFECTS} A custom name shadow color falls back to the normal dark shadow.`,
+        note: '1.21.1: a custom name shadow color falls back to the normal dark shadow.',
     },
     v189: {
         ...MODERN,
-        label: '1.8.9 (basic effects, old text)',
-        gpu: false,
+        label: '1.8.9 (full effects, old text)',
         shadow: 'vanilla',
         legacy: true,
-        inlineBadge: true,
-        note: `1.8.9: ${CPU_EFFECTS} Name colors snap to the 16 old chat colors, the shadow color is the normal one and the PolyPlus badge sits in front of the name.`,
+        note: '1.8.9: name colors snap to the 16 old chat colors and the shadow color is the normal one.',
     },
     cpu: {
         ...MODERN,
@@ -64,16 +60,28 @@ export const LOOKS: Record<GameLook, LookSpec> = {
         effects: false,
         note: 'No effects: effect layers are hidden, as for players who turn nameplate effects off.',
     },
+    far: {
+        ...MODERN,
+        label: 'Player farther away',
+        detail: 'reduced',
+        note: 'Farther away: particles, trails and paths are hidden to save work.',
+    },
+    distant: {
+        ...MODERN,
+        label: 'Player far away',
+        detail: 'minimal',
+        note: 'Far away: particles, trails, paths and effects are hidden, and animation runs slower.',
+    },
     reduced: {
         ...MODERN,
         label: 'Reduced motion',
-        detail: 'reduced',
+        motion: 'reduced',
         note: 'Reduced motion: paths, particles and one-shots stop, and each reaction holds still or is skipped, as set in its properties. The loop and colors still play.',
     },
     off: {
         ...MODERN,
         label: 'Motion off',
-        detail: 'reduced',
+        motion: 'off',
         still: true,
         note: 'Motion off: every layer shows its first frame, and paths and particles are hidden.',
     },

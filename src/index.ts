@@ -1,4 +1,5 @@
-import { setSnapshotSource } from './compile'
+import { setSnapshotSource, stopFullChecks } from './compile'
+import { startEngine } from './engine'
 import { registerElements, unregisterElements } from './elements'
 import { registerPlate, unregisterPlate } from './plate'
 import { registerFlags, unregisterFlags } from './flags'
@@ -23,6 +24,7 @@ import { registerLibrary, unregisterLibrary } from './library'
 import { registerTour, unregisterTour } from './tour'
 import { FORMAT_ID } from './model'
 import { adoptOpenProjects } from './reload/adopt'
+import { cosmeticFormatIds, registerCosmetics, unregisterCosmetics } from './cosmetic'
 import { defineAction, disposeMenuBarAction } from './util/actions'
 import { disposeAllSafe } from './util/teardown'
 
@@ -101,6 +103,7 @@ const registrations: Registration[] = [
     [registerLibrary, unregisterLibrary],
     [registerPaletteAnimation, unregisterPaletteAnimation],
     [registerExport, unregisterExport],
+    [registerCosmetics, unregisterCosmetics],
     [registerNewAction, unregisterNewAction],
     [registerTour, unregisterTour],
 ]
@@ -108,18 +111,19 @@ const registrations: Registration[] = [
 const started: Registration[] = []
 
 BBPlugin.register(PLUGIN_ID, {
-    title: 'PolyPlus Nameplates',
+    title: 'PolyPlus Cosmetics',
     author: 'Polyfrost',
-    description: 'Design PolyPlus nameplates in Blockbench with a live preview.',
+    description: 'Design PolyPlus nameplates and 3D cosmetics in Blockbench, checked by the same engine the game uses.',
     icon: 'badge',
     version: '0.1.0',
     variant: 'both',
     min_version: '5.2.0',
     await_loading: true,
     contributes: {
-        formats: [FORMAT_ID],
+        formats: [FORMAT_ID, ...cosmeticFormatIds()],
     },
     onload() {
+        startEngine()
         setSnapshotSource(buildSnapshot)
         for (const registration of registrations) {
             started.push(registration)
@@ -137,5 +141,6 @@ BBPlugin.register(PLUGIN_ID, {
     },
     onunload() {
         disposeAllSafe(started.splice(0).map((registration) => registration[1]), 'unregister failed', true)
+        stopFullChecks()
     },
 })

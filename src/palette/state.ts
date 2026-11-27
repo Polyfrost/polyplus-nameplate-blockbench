@@ -1,5 +1,5 @@
 import { defaultNameplate } from '../format'
-import { NameplateData, PER_PLAYER_PHASE, Slot, VariantData } from '../model'
+import { NAMEPLATE_DATA_VERSION, NameplateData, PER_PLAYER_PHASE, Slot, VariantData } from '../model'
 import { normalizeVariantParams } from '../params/values'
 import { wholeFlooredClamped } from '../util/num'
 import { MAX_FPS, MIN_FPS } from './ids'
@@ -12,9 +12,14 @@ import { hasProject } from '../util/project'
 import { installUndoState } from '../util/projectState'
 import { undoEdit } from '../util/undo'
 import { normalizeBlend, setBlend } from './blend'
+import { extraKeys, migrateNameplate, savedDataVersion } from './version'
 
 const ASPECTS = { nameplate: true } as unknown as UndoAspects
 const FALLBACK_TONE = '#808080'
+const PLATE_KEYS: ReadonlySet<string> = new Set(['version', 'id', 'fps', 'ownsBackground', 'referenceName', 'phase', 'text', 'badge', 'palette', 'variants'])
+const PALETTE_KEYS: ReadonlySet<string> = new Set(['slots', 'colorways'])
+const SLOT_KEYS: ReadonlySet<string> = new Set(['id', 'name', 'ramp', 'animation', 'blend'])
+const VARIANT_KEYS: ReadonlySet<string> = new Set(['palette', 'hide', 'swap', 'ownsBackground', 'text', 'badge', 'params'])
 
 const listeners = createListenerSet('palette listener failed')
 
@@ -25,7 +30,7 @@ function stringArray(value: unknown): string[] {
 function normalizeSlot(raw: any): Slot {
     const id = String(raw?.id ?? 'slot')
     const ramp = stringArray(raw?.ramp)
-    const slot: Slot = { id, name: String(raw?.name ?? id), ramp: ramp.length ? ramp : [FALLBACK_TONE] }
+    const slot: Slot = { ...extraKeys(raw, SLOT_KEYS), id, name: String(raw?.name ?? id), ramp: ramp.length ? ramp : [FALLBACK_TONE] }
     const animation = normalizeMotion(raw?.animation, slot.ramp.length)
     if (animation) slot.animation = animation
     return slot
@@ -33,6 +38,7 @@ function normalizeSlot(raw: any): Slot {
 
 function normalizeVariant(raw: any, fallbackColorway: string): VariantData {
     const variant: VariantData = {
+        ...extraKeys(raw, VARIANT_KEYS),
         palette: typeof raw?.palette === 'string' ? raw.palette : fallbackColorway,
         hide: stringArray(raw?.hide),
         swap: {},
@@ -48,9 +54,9 @@ function normalizeVariant(raw: any, fallbackColorway: string): VariantData {
     return variant
 }
 
-function normalize(raw: any): NameplateData {
+export function normalizeNameplate(raw: unknown): NameplateData {
     const base = defaultNameplate()
-    const source = raw && typeof raw === 'object' ? raw : {}
+    const source = migrateNameplate(raw)
     const slots = Array.isArray(source.palette?.slots) ? source.palette.slots.map(normalizeSlot) : base.palette.slots
 
     const colorways: Record<string, Record<string, string[]>> = {}
@@ -82,19 +88,21 @@ function normalize(raw: any): NameplateData {
     if (!Object.keys(variants).length) variants.default = normalizeVariant(null, firstColorway)
 
     return {
+        ...extraKeys(source, PLATE_KEYS),
+        version: Math.max(savedDataVersion(source), NAMEPLATE_DATA_VERSION),
         id: typeof source.id === 'string' ? source.id : base.id,
         fps: wholeFlooredClamped(source.fps, MIN_FPS, MAX_FPS, base.fps),
         ownsBackground: typeof source.ownsBackground === 'boolean' ? source.ownsBackground : base.ownsBackground,
         referenceName: typeof source.referenceName === 'string' ? source.referenceName : base.referenceName,
         ...(source.phase === PER_PLAYER_PHASE ? { phase: PER_PLAYER_PHASE } : {}),
         ...normalizePlateStyle(source),
-        palette: { slots, colorways },
+        palette: { ...extraKeys(source.palette, PALETTE_KEYS), slots, colorways },
         variants,
     }
 }
 
 export function readNameplate(): NameplateData {
-    return normalize(cloneJson(hasProject() ? Project.nameplate : null))
+    return normalizeNameplate(cloneJson(hasProject() ? Project.nameplate : null))
 }
 
 export function onNameplateChanged(listener: () => void): () => void {

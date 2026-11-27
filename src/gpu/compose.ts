@@ -1,14 +1,7 @@
-import {
-    drawRasterLayer,
-    MaterialDraw,
-    materialDrawOf,
-    NameplateLayer,
-    NameplatePreview,
-    rasterCanvas,
-} from '../engine'
+import { drawRasterLayer, layerBounds, LayerBounds, NameplateLayer, NameplatePreview, passCanvases } from '../engine'
+import { glAvailable, GlLayerImage, GlLayers, glLayers, GlStage, isFrontDepth, TagJob, tagJobOf } from '../engine/gl'
 import { currentLook, previewOptions } from '../preview/options'
-import { gpuAvailable, Light, materialRect, renderMaterial, renderParity, shaderFailures } from './renderer'
-import { currentLight, isLit } from './world'
+import { currentLight, isLit, Light, LIGHT_COLORS } from './world'
 import { pluralWord } from '../util/text'
 import { inDrawOrder } from './order'
 
@@ -52,157 +45,180 @@ export function composeSummary(): ComposeSummary {
 }
 
 export function gpuWanted(): boolean {
-    return currentLook().gpu && gpuAvailable()
+    return currentLook().gpu && glAvailable()
 }
 
-function tinted(layer: NameplateLayer, light: Light): HTMLCanvasElement | null {
-    const raster = rasterCanvas(layer)
-    if (!raster || !isLit(light)) return raster
+export function fullReplayWanted(): boolean {
+    return currentLook().effects && gpuWanted()
+}
+
+function tinted(source: HTMLCanvasElement | null, light: Light, copyFirst: boolean): HTMLCanvasElement | null {
+    if (!source || !isLit(light)) return source
+    const raster = copyFirst ? copyOf(source) : source
     const ctx = raster.getContext('2d')
     if (!ctx) return raster
-    const copy = document.createElement('canvas')
-    copy.width = raster.width
-    copy.height = raster.height
-    copy.getContext('2d')?.drawImage(raster, 0, 0)
+    const shape = copyOf(raster)
     ctx.globalCompositeOperation = 'multiply'
     ctx.fillStyle = `rgb(${Math.round(light.r * 255)}, ${Math.round(light.g * 255)}, ${Math.round(light.b * 255)})`
     ctx.fillRect(0, 0, raster.width, raster.height)
     ctx.globalCompositeOperation = 'destination-in'
-    ctx.drawImage(copy, 0, 0)
+    ctx.drawImage(shape, 0, 0)
     return raster
 }
 
+function copyOf(source: HTMLCanvasElement): HTMLCanvasElement {
+    const copy = document.createElement('canvas')
+    copy.width = source.width
+    copy.height = source.height
+    copy.getContext('2d')?.drawImage(source, 0, 0)
+    return copy
+}
+
 function drawCpu(ctx: CanvasRenderingContext2D, layer: NameplateLayer, scale: number, originX: number, originY: number, light: Light) {
-    drawRasterLayer(ctx, layer, scale, originX, originY, { raster: tinted(layer, light), additive: false })
+    drawRasterLayer(ctx, layer, scale, originX, originY, { raster: passCanvases(layer).map((raster) => tinted(raster, light, true)) })
 }
 
-function cpuAt(layer: NameplateLayer, x: number, y: number, out: number[]): void {
-    const column = x - layer.left
-    const row = y - layer.top
-    if (column < 0 || row < 0 || column >= layer.rasterWidth || row >= layer.rasterHeight) {
-        out[0] = out[1] = out[2] = out[3] = 0
-        return
+export function replayJob(layers: NameplateLayer[]): TagJob | null {
+    const job = layers.length ? tagJobOf(layers[0]) : null
+    return job && layers.every((layer) => tagJobOf(layer) === job) ? job : null
+}
+
+function gpuImages(layers: NameplateLayer[], light: Light, scale: number, stage: GlStage): GlLayers | null {
+    const job = replayJob(layers)
+    return job ? glLayers(job, [light.r, light.g, light.b], scale, stage) : null
+}
+
+function stageOf(ctx: CanvasRenderingContext2D, originX: number, originY: number): GlStage {
+    return { width: ctx.canvas?.width ?? 1, height: ctx.canvas?.height ?? 1, originX, originY }
+}
+
+function plainStage(stage: GlStage, scale: number): GlStage {
+    return { width: Math.ceil(stage.width / scale), height: Math.ceil(stage.height / scale), originX: Math.round(stage.originX / scale), originY: Math.round(stage.originY / scale) }
+}
+
+export function comparedBounds(layers: NameplateLayer[], images: GlLayers): LayerBounds {
+    const cpu = layerBounds(layers)
+    const shown = layers.some((layer) => layer.rasterWidth > 0 && layer.rasterHeight > 0)
+    let minX = shown ? cpu.minX : Infinity
+    let minY = shown ? cpu.minY : Infinity
+    let maxX = shown ? cpu.minX + cpu.width : -Infinity
+    let maxY = shown ? cpu.minY + cpu.height : -Infinity
+    for (const layer of layers) {
+        const image = images.get(layer.index)
+        if (!image) continue
+        minX = Math.min(minX, Math.floor(image.left))
+        minY = Math.min(minY, Math.floor(image.top))
+        maxX = Math.max(maxX, Math.ceil(image.left + image.image.width / image.scale))
+        maxY = Math.max(maxY, Math.ceil(image.top + image.image.height / image.scale))
     }
-    const at = (row * layer.rasterWidth + column) * 4
-    out[0] = layer.rgba[at]
-    out[1] = layer.rgba[at + 1]
-    out[2] = layer.rgba[at + 2]
-    out[3] = layer.rgba[at + 3]
+    if (!Number.isFinite(minX)) return cpu
+    return { minX, minY, width: maxX - minX, height: maxY - minY }
 }
 
-function compare(
-    ctx: CanvasRenderingContext2D,
-    preview: NameplatePreview,
-    layer: NameplateLayer,
-    draw: MaterialDraw,
-    scale: number,
-    originX: number,
-    originY: number,
-) {
-    const gpu = renderParity(preview, draw)
-    if (!gpu) return
-    const area = draw.area
-    const width = area[2] - area[0]
-    const height = area[3] - area[1]
-    const cpu = [0, 0, 0, 0]
+function drawGpuLayer(ctx: CanvasRenderingContext2D, layer: NameplateLayer, image: GlLayerImage, scale: number, originX: number, originY: number) {
+    const size = scale / image.scale
+    ctx.save()
+    ctx.globalAlpha *= layer.opacity / 255
+    if (layer.blend === 'additive') ctx.globalCompositeOperation = 'lighter'
+    ctx.imageSmoothingEnabled = size !== 1
+    ctx.drawImage(image.image, originX + image.left * scale, originY + image.top * scale, image.image.width * size, image.image.height * size)
+    ctx.restore()
+}
+
+function drawGpu(ctx: CanvasRenderingContext2D, layers: NameplateLayer[], images: GlLayers, scale: number, originX: number, originY: number) {
+    for (const layer of inDrawOrder(layers)) {
+        const image = images.get(layer.index)
+        if (image) drawGpuLayer(ctx, layer, image, scale, originX, originY)
+    }
+}
+
+function flatten(bounds: LayerBounds, paint: (ctx: CanvasRenderingContext2D) => void): ImageData | null {
+    const canvas = document.createElement('canvas')
+    canvas.width = Math.max(1, bounds.width)
+    canvas.height = Math.max(1, bounds.height)
+    const ctx = canvas.getContext('2d')
+    if (!ctx) return null
+    ctx.imageSmoothingEnabled = false
+    paint(ctx)
+    return ctx.getImageData(0, 0, canvas.width, canvas.height)
+}
+
+function compare(ctx: CanvasRenderingContext2D, layers: NameplateLayer[], images: GlLayers, scale: number, originX: number, originY: number) {
+    const bounds = comparedBounds(layers, images)
+    const cpu = flatten(bounds, (target) => {
+        for (const layer of inDrawOrder(layers)) drawRasterLayer(target, layer, 1, -bounds.minX, -bounds.minY)
+    })
+    const gpu = flatten(bounds, (target) => drawGpu(target, layers, images, 1, -bounds.minX, -bounds.minY))
+    if (!cpu || !gpu) return
     let over = 0
     ctx.save()
+    ctx.globalAlpha = 1
     ctx.fillStyle = DIFF_FILL
-    for (let j = 0; j < height; j++) {
-        for (let i = 0; i < width; i++) {
-            const lx = area[0] + i
-            const ly = area[1] + j
-            cpuAt(layer, lx, ly, cpu)
-            const at = (j * width + i) * 4
-            let worst = 0
-            for (let c = 0; c < 4; c++) worst = Math.max(worst, Math.abs(gpu[at + c] - cpu[c]))
-            if (worst <= TOLERANCE) continue
-            over++
-            const sx = draw.mirrorX ? draw.x + draw.width - lx - 1 : draw.x + lx
-            const sy = draw.y + ly
-            ctx.fillRect(originX + sx * scale, originY + sy * scale, scale, scale)
-        }
+    for (let at = 0; at < gpu.data.length; at += 4) {
+        let worst = 0
+        for (let c = 0; c < 4; c++) worst = Math.max(worst, Math.abs(gpu.data[at + c] - cpu.data[at + c]))
+        if (worst <= TOLERANCE) continue
+        over++
+        const pixel = at / 4
+        const x = bounds.minX + (pixel % gpu.width)
+        const y = bounds.minY + Math.floor(pixel / gpu.width)
+        ctx.fillRect(originX + x * scale, originY + y * scale, scale, scale)
     }
     if (over === 0) {
-        const rect = materialRect(draw, { scale, originX, originY })
         ctx.strokeStyle = MATCH_OUTLINE
         ctx.lineWidth = 1
-        ctx.strokeRect(rect.x + 0.5, rect.y + 0.5, rect.width - 1, rect.height - 1)
+        ctx.strokeRect(originX + bounds.minX * scale + 0.5, originY + bounds.minY * scale + 0.5, gpu.width * scale - 1, gpu.height * scale - 1)
     }
     ctx.restore()
-    const source = preview.shader(draw.key)
-    session.compared.push({
-        layer: draw.layer,
-        pixels: width * height,
-        over,
-        atlas: !!source?.textures.some((ref) => ref.kind === 'atlas'),
-    })
+    session.compared.push({ layer: isFrontDepth(layers[0].depth) ? 'over_text' : 'under_text', pixels: gpu.width * gpu.height, over, atlas: false })
 }
 
-function clipSide(ctx: CanvasRenderingContext2D, middle: number, right: boolean) {
-    const width = ctx.canvas.width
-    const height = ctx.canvas.height
+function split(ctx: CanvasRenderingContext2D, layers: NameplateLayer[], images: GlLayers, scale: number, originX: number, originY: number, light: Light) {
+    const bounds = layerBounds(layers)
+    const middle = originX + (bounds.minX + Math.round(bounds.width / 2)) * scale
+    const top = originY + bounds.minY * scale
+    const height = bounds.height * scale
+    ctx.save()
     ctx.beginPath()
-    if (right) ctx.rect(middle, 0, Math.max(0, width - middle), height)
-    else ctx.rect(0, 0, Math.max(0, middle), height)
+    ctx.rect(0, 0, Math.max(0, middle), ctx.canvas.height)
     ctx.clip()
-}
-
-function split(
-    ctx: CanvasRenderingContext2D,
-    preview: NameplatePreview,
-    layer: NameplateLayer,
-    draw: MaterialDraw,
-    scale: number,
-    originX: number,
-    originY: number,
-    light: Light,
-): boolean {
-    const rect = materialRect(draw, { scale, originX, originY })
-    const middle = originX + Math.round((rect.x - originX) / scale + (draw.area[2] - draw.area[0]) / 2) * scale
-    ctx.save()
-    clipSide(ctx, middle, false)
-    const drawn = renderMaterial(ctx, preview, draw, { scale, originX, originY }, light)
-    ctx.restore()
-    if (!drawn) return false
-    ctx.save()
-    clipSide(ctx, middle, true)
-    drawCpu(ctx, layer, scale, originX, originY, light)
+    drawGpu(ctx, layers, images, scale, originX, originY)
     ctx.restore()
     ctx.save()
+    ctx.beginPath()
+    ctx.rect(middle, 0, Math.max(0, ctx.canvas.width - middle), ctx.canvas.height)
+    ctx.clip()
+    for (const layer of inDrawOrder(layers)) drawCpu(ctx, layer, scale, originX, originY, light)
+    ctx.restore()
+    ctx.save()
+    ctx.globalAlpha = 1
     ctx.strokeStyle = SPLIT_LINE
     ctx.setLineDash?.([scale, scale])
     ctx.beginPath()
-    ctx.moveTo(middle + 0.5, rect.y)
-    ctx.lineTo(middle + 0.5, rect.y + rect.height)
+    ctx.moveTo(middle + 0.5, top)
+    ctx.lineTo(middle + 0.5, top + height)
     ctx.stroke()
     ctx.restore()
-    return true
 }
 
 export function composeLayers(ctx: CanvasRenderingContext2D, layers: NameplateLayer[], scale: number, originX: number, originY: number) {
     ctx.imageSmoothingEnabled = false
     const light = currentLight()
-    const preview = session.preview
-    const gpu = !!preview && gpuWanted()
-    const mode = previewOptions.compare
-    for (const layer of inDrawOrder(layers)) {
-        const draw = gpu ? materialDrawOf(layer) : null
-        if (draw && preview) {
-            if (mode === 'split') {
-                if (split(ctx, preview, layer, draw, scale, originX, originY, light)) {
-                    session.gpuDrawn++
-                    continue
-                }
-            } else if (renderMaterial(ctx, preview, draw, { scale, originX, originY }, light)) {
-                session.gpuDrawn++
-                if (mode === 'diff') compare(ctx, preview, layer, draw, scale, originX, originY)
-                continue
-            }
-            session.cpuDrawn++
+    const stage = stageOf(ctx, originX, originY)
+    const images = fullReplayWanted() ? gpuImages(layers, light, scale, stage) : null
+    if (images) {
+        session.gpuDrawn++
+        const effects = !!tagJobOf(layers[0])?.preview.hasMaterials
+        if (effects && previewOptions.compare === 'split') {
+            split(ctx, layers, images, scale, originX, originY, light)
+            return
         }
-        drawCpu(ctx, layer, scale, originX, originY, light)
+        drawGpu(ctx, layers, images, scale, originX, originY)
+        if (effects && previewOptions.compare === 'diff') compare(ctx, layers, gpuImages(layers, isLit(light) ? LIGHT_COLORS.day : light, 1, plainStage(stage, scale)) ?? images, scale, originX, originY)
+        return
     }
+    if (layers.length) session.cpuDrawn++
+    for (const layer of inDrawOrder(layers)) drawCpu(ctx, layer, scale, originX, originY, light)
 }
 
 export function gpuNotes(): string {
@@ -210,17 +226,10 @@ export function gpuNotes(): string {
     const notes: string[] = []
     const preview = session.preview
     const hasEffects = !!preview?.hasMaterials
-    if (hasEffects && look.gpu && look.effects && !gpuAvailable()) {
+    if (hasEffects && look.gpu && look.effects && !glAvailable()) {
         notes.push("This browser can't draw full effects, so basic effects show.")
     }
-    const failures = shaderFailures().filter((failure) => preview?.shader(failure.key))
-    if (look.gpu && failures.length) {
-        notes.push(`Effect ${failures.map((failure) => `'${failure.material}'`).join(', ')} couldn't be built as a full effect, so its basic version shows, as in game.`)
-    }
-    if (hasEffects && preview?.shaders().some((source) => source.textures.some((ref) => ref.kind !== 'bundle'))) {
-        notes.push('Game and block textures show stand-in art; the game uses its own textures.')
-    }
-    if (hasEffects && look.gpu && previewOptions.compare !== 'off' && !gpuAvailable()) {
+    if (hasEffects && look.gpu && previewOptions.compare !== 'off' && !glAvailable()) {
         notes.push("Comparing needs full effects, which this browser doesn't offer.")
     }
     if (hasEffects && look.gpu && previewOptions.compare === 'split' && session.gpuDrawn > 0) {
@@ -233,12 +242,10 @@ export function gpuNotes(): string {
             notes.push(over === 0
                 ? 'Full and basic effects match (within 1 per color channel): each effect has a green frame.'
                 : `${over} effect ${pluralWord(over, 'pixel')} differ between full and basic effects by more than 1 per color channel (pink).`)
-            if (compared.some((entry) => entry.atlas)) notes.push("Block textures are compared on their first frame; in game, full effects animate them and basic effects don't.")
         }
     }
     if (hasEffects && !look.gpu && previewOptions.compare !== 'off') {
         notes.push('Pick a full-effects Game Look to compare it with basic effects.')
     }
-    if (isLit() && hasEffects && look.gpu) notes.push('Effects marked "Glows in the dark" stay bright; everything else takes the light.')
     return notes.join(' ')
 }

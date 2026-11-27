@@ -1,3 +1,5 @@
+import { engineNodes, RawNode, RawNodeInput, RawNodeSetting } from '../engine'
+
 export type SocketType = 'float' | 'vec2' | 'vec3' | 'vec4' | 'slot'
 export type Accepts = 'number' | 'float' | 'vec2' | 'color' | 'surface' | 'any'
 
@@ -489,8 +491,73 @@ export const NODE_SPECS: NodeSpec[] = [
 ]
 
 const SPECS: Record<string, NodeSpec> = Object.fromEntries(NODE_SPECS.map((spec) => [spec.type, spec]))
+const ACCEPTS: readonly Accepts[] = ['number', 'float', 'vec2', 'color', 'surface', 'any']
+const COST_RULES: readonly CostRule[] = ['flat', 'width', 'inputs', 'octaves']
+let adopted = false
+
+function engineFallback(raw: RawNodeInput): Fallback {
+    if (raw.required) return REQUIRED
+    if (typeof raw.default_node === 'string') return input(raw.default_node)
+    if (Array.isArray(raw.default)) return value(...raw.default)
+    return ABSENT
+}
+
+function engineSocket(socket: SocketSpec, raw: RawNodeInput | undefined): SocketSpec {
+    if (!raw) return socket
+    const accepts = ACCEPTS.includes(raw.accepts as Accepts) ? (raw.accepts as Accepts) : socket.accepts
+    return { ...socket, accepts, fallback: engineFallback(raw) }
+}
+
+function choiceLabel(choice: string): string {
+    const words = choice.replace(/_/g, ' ')
+    return words.charAt(0).toUpperCase() + words.slice(1)
+}
+
+function engineSetting(setting: SettingSpec, raw: RawNodeSetting | undefined): SettingSpec {
+    if (!raw) return setting
+    switch (setting.kind) {
+        case 'int':
+            return { ...setting, min: raw.min, max: raw.max, fallback: raw.default[0] ?? setting.fallback, required: raw.required || undefined }
+        case 'pair':
+            return { ...setting, min: raw.min, max: raw.max, fallback: [raw.default[0] ?? 0, raw.default[1] ?? 0] }
+        case 'choice': {
+            if (!raw.choices.length) return setting
+            const options = Object.fromEntries(raw.choices.map((choice) => [choice, setting.options[choice] ?? choiceLabel(choice)]))
+            return { ...setting, options, fallback: raw.choices[raw.default[0]] ?? raw.choices[0] }
+        }
+        default:
+            return setting
+    }
+}
+
+function adoptNode(spec: NodeSpec, node: RawNode) {
+    const inputs = new Map(node.inputs.map((input) => [input.name, input]))
+    const settings = new Map(node.settings.map((setting) => [setting.name, setting]))
+    const known = new Set(spec.sockets.map((socket) => socket.name))
+    const added = node.inputs.filter((raw) => !known.has(raw.name)).map((raw) => engineSocket(socket(raw.name, 'number'), raw))
+    spec.sockets = [...spec.sockets.map((entry) => engineSocket(entry, inputs.get(entry.name))), ...added]
+    spec.settings = spec.settings.map((setting) => engineSetting(setting, settings.get(setting.key)))
+    if (COST_RULES.includes(node.cost?.by as CostRule)) spec.cost = node.cost.by
+}
+
+function adoptEngineNodes() {
+    if (adopted) return
+    const nodes = engineNodes()
+    if (!nodes.length) return
+    adopted = true
+    for (const node of nodes) {
+        const spec = SPECS[node.type]
+        if (spec) adoptNode(spec, node)
+    }
+}
+
+export function nodeSpecs(): readonly NodeSpec[] {
+    adoptEngineNodes()
+    return NODE_SPECS
+}
 
 export function specOf(type: string): NodeSpec | null {
+    adoptEngineNodes()
     return Object.prototype.hasOwnProperty.call(SPECS, type) ? SPECS[type] : null
 }
 

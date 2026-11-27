@@ -1,8 +1,8 @@
 import { BlockbenchInterpolation, blockbenchInterpolations, readBack } from '../animate/interpolation'
 import { isReaction, isReactionMode, isReducedMode, MAX_APPEAR_SECONDS } from '../animate/props'
-import { describe } from '../engine'
+import { describe, signalReaction, unknownRequires } from '../engine'
 import { DEFAULT_FPS, DEFAULT_LOOP_FRAMES, defaultNameplate } from '../format'
-import { BADGE_TARGET, CAPABILITIES, Channel, LOOP_ANIMATION, NAME_MASK, NameplateData, PaletteTrackData, PER_PLAYER_PHASE, PLATE_TARGET, ReducedMode, ScheduleData, Slot, TriggerData, VariantData } from '../model'
+import { BADGE_TARGET, Channel, LOOP_ANIMATION, NAME_MASK, NAMEPLATE_DATA_VERSION, NameplateData, PaletteTrackData, PER_PLAYER_PHASE, PLATE_TARGET, ReducedMode, ScheduleData, Slot, TriggerData, VariantData } from '../model'
 import { ExtraData, ExtraPatch, PathStep } from './extra'
 import { FLAGS, MANIFEST, PALETTES, SOURCE } from './files'
 import { expandRamp, parseHex, parseSlotRef } from './ramp'
@@ -17,7 +17,7 @@ import type { BurstKey } from '../motion/types'
 import { importReactionPalette } from '../palanim/reaction'
 import { isMaterialFilePath, planMaterials } from '../material/import'
 import { effectProps } from '../kinds/effect'
-import { importParamKeys, isParamChannel } from '../material/params'
+import { isParamChannel } from '../material/params'
 import type { MaterialsState } from '../material/types'
 import { groupBreakpointPlan, GroupBreakpoint } from '../library/groups'
 import { editableKeyValue, importKeyValue } from '../molang/keys'
@@ -47,7 +47,7 @@ const LAYER_CHANNELS: Record<string, Channel[]> = {
     plate: ['position'],
 }
 const STEP_ONLY = new Set<string>(['frame', 'visible'])
-const MANIFEST_KEYS = new Set(['text', 'badge', 'format', 'id', 'requires', 'fps', 'loop', 'ownsBackground', 'layers', 'variants', 'groups', 'animations', 'params'])
+const MANIFEST_KEYS = new Set(['text', 'badge', 'format', 'kind', 'id', 'requires', 'fps', 'loop', 'ownsBackground', 'layers', 'variants', 'groups', 'animations', 'params'])
 const MANIFEST_LABELS: Record<string, string> = {
     params: 'Shared numbers',
     text: 'Text settings',
@@ -69,7 +69,6 @@ const SPRITE_FILE_KEYS = new Set(['colors', 'rows', 'frames'])
 const ANIMATION_KEYS = new Set(['schedule', 'trigger', 'length', 'tracks', 'restart', 'reduced'])
 const SCHEDULE_KEYS = new Set(['window', 'jitter', 'chance', 'id', 'weight'])
 const DEFAULT_APPEAR = 5
-const REPRESENTED_REQUIRES = new Set<string>(CAPABILITIES)
 
 export type Json = any
 
@@ -478,9 +477,10 @@ function triggerOf(raw: unknown): TriggerData | string {
         return { kind: 'appear', seconds: raw.appear }
     }
     if (keys.some((key) => key !== 'reaction' && key !== 'on')) return 'its trigger has fields the plugin doesn\'t know'
-    if (!isReaction(raw.reaction)) return `reaction '${String(raw.reaction)}' is not one the plugin knows`
+    const reaction = signalReaction(String(raw.reaction))
+    if (!isReaction(reaction)) return `reaction '${String(raw.reaction)}' is not one the plugin knows`
     if (!isReactionMode(raw.on)) return `'on: ${String(raw.on)}' is not while, start or stop`
-    return { kind: 'reaction', reaction: raw.reaction, on: raw.on }
+    return { kind: 'reaction', reaction, on: raw.on }
 }
 
 function scheduleOf(raw: unknown): ScheduleData | string {
@@ -509,7 +509,6 @@ interface ChannelFound {
     parsed: Array<{ target: string, channel: Channel, keys: Json[] }>
     bursts: Array<{ target: string, keys: BurstKey[] }>
     speedTracks: Array<{ target: string, keys: Json[] }>
-    paramTracks: TrackPlan[]
 }
 
 interface ChannelTake {
@@ -518,7 +517,6 @@ interface ChannelTake {
     target: string
     channel: string
     keys: unknown
-    step: number
     record: Recorder
     found: ChannelFound
 }
@@ -531,10 +529,10 @@ interface ChannelRule {
 const CHANNEL_RULES: ChannelRule[] = [
     {
         applies: (kind, channel) => isBurstTrack(kind, channel),
-        take({ target, keys, step, found }) {
+        take({ target, keys, found }) {
             const bursts = burstKeys(keys)
             if (!bursts) return `its burst track on '${target}' uses values the plugin can't edit`
-            found.bursts.push({ target, keys: bursts.map((key) => ({ ...key, step: key.step * step })) })
+            found.bursts.push({ target, keys: bursts })
             return null
         },
     },
@@ -548,12 +546,9 @@ const CHANNEL_RULES: ChannelRule[] = [
         },
     },
     {
-        applies: (kind, channel, scheduled) => !scheduled && kind === 'material' && isParamChannel(channel),
-        take({ name, target, channel, keys, record, found }) {
-            const imported = importParamKeys(keys, `Animation '${name}': ${channel} on ${target}`)
-            if (!imported) return `its ${channel} track on '${target}' uses values the plugin can't edit`
-            imported.changes.forEach((note) => record.change(note))
-            found.paramTracks.push({ target, channel: channel as Channel, keys: imported.keys })
+        applies: (_kind, channel) => isParamChannel(channel),
+        take({ name, target, channel, record }) {
+            record.dropped.push(`Animation '${name}': ${channel} track on ${target} (the game can't animate effect settings)`)
             return null
         },
     },
@@ -572,7 +567,6 @@ function animationPlan(
     name: string,
     animation: Json,
     kinds: Map<string, string>,
-    steps: Map<string, number>,
     loop: number,
     record: Recorder,
     colors: PaletteContext,
@@ -596,13 +590,8 @@ function animationPlan(
     const raw = animation.tracks === undefined ? {} : animation.tracks
     if (!isRecord(raw)) return 'its tracks are not an object'
 
-    let step = 1
-    if (schedule) {
-        const layer = Object.keys(raw).find((target) => steps.has(target))
-        if (layer) step = steps.get(layer) ?? 1
-    }
-    const found: ChannelFound = { parsed: [], bursts: [], speedTracks: [], paramTracks: [] }
-    const { parsed, bursts, speedTracks, paramTracks } = found
+    const found: ChannelFound = { parsed: [], bursts: [], speedTracks: [] }
+    const { parsed, bursts, speedTracks } = found
     const palette: PaletteTrackData[] = []
     let letters: LetterTrack | undefined
     for (const target of Object.keys(raw)) {
@@ -628,7 +617,7 @@ function animationPlan(
         if (!isRecord(channels)) return `its track on '${target}' is not an object`
         for (const channel of Object.keys(channels)) {
             const rule = CHANNEL_RULES.find((candidate) => candidate.applies(kind, channel, !!schedule))!
-            const problem = rule.take({ name, kind, target, channel, keys: channels[channel], step, record, found })
+            const problem = rule.take({ name, kind, target, channel, keys: channels[channel], record, found })
             if (problem) return problem
         }
     }
@@ -637,10 +626,8 @@ function animationPlan(
     const tracks: TrackPlan[] = parsed.map(({ target, channel, keys }) => ({
         target,
         channel,
-        keys: trackKeys(channel, keys, `${label}: ${channel} on ${target}`, record).map((key) => ({ ...key, step: key.step * step })),
+        keys: trackKeys(channel, keys, `${label}: ${channel} on ${target}`, record),
     }))
-    tracks.push(...paramTracks)
-    const scaled = schedule ? { ...schedule, window: schedule.window * step, jitter: schedule.jitter * step } : null
     const speeds = speedTracks.map(({ target, keys }) => {
         const modes = keyModes(keys)
         const interpolations = blockbenchInterpolations(modes)
@@ -653,8 +640,8 @@ function animationPlan(
     return {
         name,
         trigger,
-        schedule: scaled,
-        length: whileReaction ? loop : Number(animation.length) * step,
+        schedule,
+        length,
         restart: !whileReaction && animation.restart === true,
         tracks,
         bursts,
@@ -678,7 +665,6 @@ function burstKeys(raw: unknown): BurstKey[] | null {
 function readAnimations(
     manifest: Json,
     kinds: Map<string, string>,
-    steps: Map<string, number>,
     record: Recorder,
     colors: PaletteContext,
 ): { tracks: TrackPlan[], animations: AnimationPlan[] } {
@@ -689,7 +675,7 @@ function readAnimations(
     for (const name of Object.keys(animations)) {
         const animation = animations[name]
         if (name !== LOOP_ANIMATION) {
-            const plan = animationPlan(name, animation, kinds, steps, loop, record, colors)
+            const plan = animationPlan(name, animation, kinds, loop, record, colors)
             if (typeof plan !== 'string') {
                 plans.push(plan)
                 continue
@@ -723,14 +709,8 @@ function readAnimations(
             for (const channel of Object.keys(channels)) {
                 const keys = channels[channel]
                 if (isBurstTrack(kind, channel)) continue
-                if (kind === 'material' && isParamChannel(channel)) {
-                    const imported = importParamKeys(keys, `Loop ${channel} on ${target}`)
-                    if (!imported) {
-                        record.keep(MANIFEST, ['animations', LOOP_ANIMATION, 'tracks', target, channel], keys, `Loop ${channel} track on ${target} (it uses values the plugin can't edit)`)
-                        continue
-                    }
-                    imported.changes.forEach((note) => record.change(note))
-                    tracks.push({ target, channel: channel as Channel, keys: imported.keys })
+                if (isParamChannel(channel)) {
+                    record.dropped.push(`Loop ${channel} track on ${target} (the game can't animate effect settings)`)
                     continue
                 }
                 if (!(LAYER_CHANNELS[kind] as string[]).includes(channel) || !Array.isArray(keys)) {
@@ -754,13 +734,11 @@ function readAnimations(
 }
 
 function readManifestExtras(manifest: Json, record: Recorder) {
+    const requires = unknownRequires(manifest.requires)
+    if (requires.length) record.keep(MANIFEST, ['requires'], requires, 'Features it needs', true, 'union')
     for (const key of Object.keys(manifest)) {
         if (key === 'phase' && manifest.phase === PER_PLAYER_PHASE) continue
         if (!MANIFEST_KEYS.has(key)) record.keep(MANIFEST, [key], manifest[key], MANIFEST_LABELS[key] ?? `${MANIFEST}: ${key}`)
-    }
-    const extraRequires = stringList(manifest.requires).filter((item) => !REPRESENTED_REQUIRES.has(item))
-    if (extraRequires.length > 0) {
-        record.keep(MANIFEST, ['requires'], extraRequires, `Needs newer game features: ${extraRequires.join(', ')}`, false, 'union')
     }
     for (const entry of Array.isArray(manifest.layers) ? manifest.layers : []) {
         if (!isRecord(entry)) continue
@@ -957,6 +935,7 @@ export function planImport(bundle: Bundle): ImportPlan {
     const base = defaultNameplate()
     const loop = positiveNumber(manifest.loop, DEFAULT_LOOP_FRAMES)
     const nameplate: NameplateData = {
+        version: NAMEPLATE_DATA_VERSION,
         id: String(manifest.id),
         fps: positiveNumber(manifest.fps, DEFAULT_FPS),
         ownsBackground: manifest.ownsBackground === true,
@@ -989,13 +968,11 @@ export function planImport(bundle: Bundle): ImportPlan {
     for (const [id, layer] of layers) kinds.set(id, layer.kind)
     kinds.set(BADGE_TARGET, 'badge')
     kinds.set(PLATE_TARGET, 'plate')
-    const steps = new Map<string, number>()
-    for (const [id, layer] of layers) steps.set(id, Number(layer.props.step) || 1)
     takePaletteAnimation(manifest, nameplate.palette.slots)
     const slotMolang = takeSlotMolang(manifest, palette.slots)
     const rawSlots: Json[] = Array.isArray(bundle.palettes?.slots) ? bundle.palettes.slots : []
     const interpolated = new Set<string>(rawSlots.filter((slot) => isRecord(slot) && slot.interpolate !== undefined && slot.interpolate !== null).map((slot) => String(slot.id)))
-    const { tracks, animations } = readAnimations(manifest, kinds, steps, record, { slots: nameplate.palette.slots, interpolated })
+    const { tracks, animations } = readAnimations(manifest, kinds, record, { slots: nameplate.palette.slots, interpolated })
 
     const usedSprites = new Set<string>()
     for (const layer of layers.values()) for (const id of planSpriteIds(layer)) usedSprites.add(id)

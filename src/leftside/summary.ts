@@ -1,4 +1,4 @@
-import type { CostReport, CostRow } from '../preview/cost'
+import { CostReport, CostRow, UNFINISHED_HEADLINE } from '../preview/cost'
 
 const NEAR_PERCENT = 80
 
@@ -21,7 +21,7 @@ export function costSummary(report: CostReport): CostSummary {
     if (report.status === 'over' || over.length > 0) {
         const names = over.map((row) => row.label)
         const margin = over.length === 1 && over[0].id === 'margin' && over[0].layer
-        const text = margin ? `Layer '${over[0].layer}' is too far outside the background, so export is blocked. Move it closer to the body, or delete it.` : names.length === 1 ? `Over the limit: ${names[0]}. Export is blocked.` : names.length > 1 ? `${names.length} things are over the limit. Export is blocked.` : report.headline
+        const text = report.headline === UNFINISHED_HEADLINE ? report.headline : margin ? `Layer '${over[0].layer}' is too far outside the background, so export is blocked. Move it closer to the body, or delete it.` : names.length === 1 ? `Over the limit: ${names[0]}. Export is blocked.` : names.length > 1 ? `${names.length} things are over the limit. Export is blocked.` : report.headline
         return { state: 'over', text, icon: 'error', open: true }
     }
     if (report.status === 'unknown') return { state: 'unknown', text: report.headline, icon: 'help_outline', open: false }

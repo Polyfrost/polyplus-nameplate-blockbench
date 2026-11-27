@@ -5,7 +5,9 @@
     "scripts": {
         "sync-engine": "node scripts/sync-engine.mjs",
         "build": "node build.mjs",
-        "typecheck": "tsc --noEmit -p tsconfig.json"
+        "build:dev": "node build.mjs --dev",
+        "typecheck": "tsc --noEmit -p tsconfig.json",
+        "test": "node scripts/test.mjs"
     },
     "devDependencies": {
         "blockbench-types": "5.2.1",

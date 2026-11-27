@@ -1,3 +1,4 @@
+import { engineAnchors, offeredBy } from '../engine'
 import { bodyOptions, currentNode, flag, list, paintPicture, percentOf, PERCENT, rangesPart, textureOptions, followPart, whole, WHOLE_TAG } from './motionForm'
 import { limited, limitedPair, limitedValue, tell } from '../elements/limits'
 import { ANCHOR_LABELS, framesFieldDescription } from '../motion/form'
@@ -39,7 +40,7 @@ const isCustom = (result: Values) => result?.path_preset === 'custom'
 const following = (result: Values) => !isCustom(result) && !!result?.follow
 const byLaps = (result: Values) => result?.timing === 'laps'
 const severalWalkers = (result: Values) => Number(result?.walkers ?? 1) > 1
-const anchors = () => labeled(EDGE_ANCHORS, ANCHOR_LABELS)
+const anchors = () => labeled(offeredBy(EDGE_ANCHORS, engineAnchors()), ANCHOR_LABELS)
 
 const pathRanges = widthRanges({
     prefix: 'bp',

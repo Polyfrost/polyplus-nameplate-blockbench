@@ -26,7 +26,6 @@ export interface ScheduleTiming {
     window: number
     jitter: number
     chance: number
-    step: number
     members: ScheduleMember[]
 }
 
@@ -79,15 +78,14 @@ function windowEvent(timing: ScheduleTiming, seed: number, window: number): { me
 
 export function scheduleEvents(timing: ScheduleTiming, seed: number, frames: number, limit: number): ScheduleEvent[] {
     const events: ScheduleEvent[] = []
-    const step = Math.max(1, timing.step)
     if (!(timing.window >= 1)) return events
-    for (let window = 0; window * timing.window * step < frames && events.length < limit; window++) {
+    for (let window = 0; window * timing.window < frames && events.length < limit; window++) {
         const event = windowEvent(timing, seed, window)
         if (!event) continue
-        const frame = (window * timing.window + event.start) * step
+        const frame = window * timing.window + event.start
         if (frame >= frames) break
         const member = timing.members[event.member]
-        events.push({ name: member.name, frame, length: member.length * step })
+        events.push({ name: member.name, frame, length: member.length })
     }
     return events
 }
@@ -101,7 +99,6 @@ export function scheduleTimings(files: Record<string, string>): Map<string, Sche
         return timings
     }
     const animations = isRecord(manifest?.animations) ? manifest.animations : {}
-    const targets = new Map<string, Set<string>>()
     for (const name of Object.keys(animations)) {
         const animation = animations[name]
         const schedule = isRecord(animation) ? animation.schedule : null
@@ -114,20 +111,11 @@ export function scheduleTimings(files: Record<string, string>): Map<string, Sche
                 window: wholeOr(schedule.window, 0),
                 jitter: wholeOr(schedule.jitter, 0),
                 chance: Number.isFinite(Number(schedule.chance)) ? Number(schedule.chance) : 1,
-                step: 1,
                 members: [],
             }
             timings.set(id, timing)
-            targets.set(id, new Set())
         }
         timing.members.push({ name, weight: Math.max(0, wholeOr(schedule.weight, 1)), length: Math.max(1, wholeOr(animation.length, 1)) })
-        for (const target of Object.keys(isRecord(animation.tracks) ? animation.tracks : {})) targets.get(id)!.add(target)
-    }
-    const layers: any[] = Array.isArray(manifest?.layers) ? manifest.layers : []
-    for (const timing of timings.values()) {
-        const used = targets.get(timing.id)!
-        const layer = layers.find((entry) => isRecord(entry) && used.has(String(entry.id)))
-        timing.step = Math.max(1, wholeOr(layer?.step, 1))
     }
     return timings
 }

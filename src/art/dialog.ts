@@ -1,3 +1,4 @@
+import { disposeUnheld } from '../engine'
 import { BodyArtData } from '../model'
 import { frameCountOf } from '../palette/sprites'
 import { readNameplate } from '../palette/state'
@@ -200,6 +201,8 @@ export function openArtDialog(node: any): Dialog | null {
         } catch (error) {
             console.error('[polyplus_nameplate] body picture preview failed', error)
             state.previewIssues = ["The preview couldn't be drawn. Close this and open it again."]
+        } finally {
+            disposeUnheld(loaded.preview)
         }
     }
 

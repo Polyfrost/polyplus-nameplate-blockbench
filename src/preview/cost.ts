@@ -1,4 +1,4 @@
-import { EngineIssue, IssueValues, LoadedBundle, NameplateCost, NameplateEffectCost, NameplateFallbackCost, NameplateLayer, NameplateLimits, nameplateLimits, NameplatePreview } from '../engine'
+import { EngineIssue, IssueValues, LoadedBundle, NameplateCost, NameplateEffectCost, NameplateFallbackCost, NameplateLimits, nameplateLimits, NameplatePreview } from '../engine'
 import { count, cpuParts, FLASH_HOLD_HINT, flashText, isLetterCpu, kilobytes } from '../checks/budget'
 import { classifyIssue, IssueFacts, issueValue } from '../checks/codes'
 import { pluralWord } from '../util/text'
@@ -45,8 +45,6 @@ export interface CostReport {
     flashPending: boolean
 }
 
-export type QuadPainter = (preview: NameplatePreview, frame: number) => NameplateLayer[]
-
 interface Found {
     used?: number
     layer?: string
@@ -78,7 +76,7 @@ const LABELS: Record<CostId, { label: string, help: string }> = {
     },
     flash: {
         label: 'Flashing',
-        help: 'No more than 64 pixels may flash together more than 3 times in one second',
+        help: '',
     },
     rebuild: {
         label: 'Effect build work',
@@ -91,7 +89,6 @@ const LABELS: Record<CostId, { label: string, help: string }> = {
 }
 
 const ORDER: CostId[] = ['quads', 'cache', 'cpu', 'states', 'margin', 'flash']
-const MAX_QUAD_FRAMES = 40
 const STILL_SENTENCE = 'On basic effects, players see its first frame.'
 const DRIFT_SENTENCE = 'Drifts: never repeats. On basic effects it is rebuilt as it moves.'
 const FALLBACK_CODES = new Set<string>(['fallback_cache', 'fallback_still', 'fallback_rebuild'])
@@ -99,12 +96,17 @@ const FALLBACK_CODES = new Set<string>(['fallback_cache', 'fallback_still', 'fal
 const QUADS_FIX = 'Use fewer or simpler layers, particles or repeats.'
 const CACHE_FIX = 'Use fewer frames or smaller sprites.'
 
-const cache = new WeakMap<NameplatePreview, NameplateCost | null>()
-const flashCache = new WeakMap<NameplatePreview, NameplateCost | null>()
-const overCache = new WeakMap<LoadedBundle, NameplateCost | null>()
-const overFlashCache = new WeakMap<LoadedBundle, NameplateCost | null>()
-const quadCache = new WeakMap<NameplatePreview, Map<number, number>>()
+interface Measured {
+    version: number
+    cost: NameplateCost | null
+}
+
+const cache = new WeakMap<NameplatePreview, Measured>()
+const flashCache = new WeakMap<NameplatePreview, Measured>()
+const overCache = new WeakMap<LoadedBundle, Measured>()
+const overFlashCache = new WeakMap<LoadedBundle, Measured>()
 const OVER_HEADLINE = 'Over the limit. Export is blocked until this is fixed.'
+export const UNFINISHED_HEADLINE = "The flash check didn't finish, so export is blocked. Use fewer or smaller layers that change, or a shorter loop."
 
 function megabytes(bytes: number): string {
     if (bytes < 1024 * 1024) return kilobytes(bytes)
@@ -165,11 +167,25 @@ function flashNote(values: IssueValues): string {
     return `${flashText(values)} ${FLASH_HOLD_HINT}`
 }
 
+function flashUnfinished(cost: NameplateCost): IssueFacts | undefined {
+    return cost.flashTimes === null && cost.flashChecked ? coded(cost.issues, 'flash_unchecked') : undefined
+}
+
+function unfinishedNote(facts: IssueFacts): string {
+    const checked = issueValue(facts, 'checked')
+    const scenarios = issueValue(facts, 'scenarios')
+    const part = checked !== null && scenarios !== null ? `It checked ${count(checked)} of ${count(scenarios)} cases` : 'It only checked some cases'
+    return `${part} before it ran out of time, so it can't be exported. Use fewer or smaller layers that change, or a shorter loop.`
+}
+
 function flashRow(cost: NameplateCost, limits: NameplateLimits, failed: Found | undefined): CostRow {
     const times = cost.flashTimes
     const pixels = cost.flashPixels ?? 0
     if (times === null) {
         if (failed) return row('flash', 'Fails', 100, true, true, flashNote(failed.values), failed.layer)
+        const unfinished = flashUnfinished(cost)
+        if (unfinished) return row('flash', "Didn't finish", 100, true, false, unfinishedNote(unfinished), unfinished.layer ?? '')
+        if (cost.flashChecked) return row('flash', 'Passes', 0, false, true, `The limit is ${limits.flashArea} px flashing together ${limits.flashes} times a second.`)
         return row('flash', 'Checking...', 0, false, false, 'Checked a moment after you stop editing.')
     }
     const worst = pixels > 0
@@ -182,43 +198,26 @@ function flashRow(cost: NameplateCost, limits: NameplateLimits, failed: Found | 
     return row('flash', 'Passes', 0, false, true, `${worst} The limit is ${limits.flashArea} px flashing together ${limits.flashes} times a second.`)
 }
 
-function frameSamples(loop: number): number[] {
-    const frames = Math.max(1, Math.floor(loop) || 1)
-    if (frames <= MAX_QUAD_FRAMES) return Array.from({ length: frames }, (_, index) => index)
-    return Array.from({ length: MAX_QUAD_FRAMES }, (_, index) => Math.floor((index * frames) / MAX_QUAD_FRAMES))
+function withLimitHelp(rows: CostRow[], limits: NameplateLimits): CostRow[] {
+    if (!Number.isFinite(limits.flashArea) || !Number.isFinite(limits.flashes)) return rows
+    const help = `No more than ${count(limits.flashArea)} pixels may flash together more than ${count(limits.flashes)} times in one second`
+    return rows.map((entry) => (entry.id === 'flash' ? { ...entry, help } : entry))
 }
 
-function quadsByLayer(preview: NameplatePreview, paint: QuadPainter): Map<number, number> {
-    const known = quadCache.get(preview)
-    if (known) return known
-    const most = new Map<number, number>()
-    for (const frame of frameSamples(preview.loop)) {
-        const frameQuads = new Map<number, number>()
-        for (const op of paint(preview, frame)) {
-            frameQuads.set(op.index, (frameQuads.get(op.index) ?? 0) + (op.quads ?? 1))
-        }
-        for (const [index, quads] of frameQuads) most.set(index, Math.max(most.get(index) ?? 0, quads))
-    }
-    quadCache.set(preview, most)
-    return most
-}
-
-function quadDetails(cost: NameplateCost, preview: NameplatePreview | null, paint: QuadPainter | undefined): CostDetail[] {
-    if (!preview || !paint) return []
-    let most: Map<number, number>
+function quadDetails(preview: NameplatePreview | null): CostDetail[] {
+    if (!preview) return []
+    let layers: Array<{ id: string, quads: number }>
     try {
-        most = quadsByLayer(preview, paint)
+        layers = preview.analysis().layers
     } catch (error) {
         console.error('[polyplus_nameplate] counting quads per layer failed', error)
         return []
     }
-    return [...most.entries()]
-        .filter(([, quads]) => quads > 0)
-        .sort((a, b) => b[1] - a[1] || a[0] - b[0])
-        .map(([index, quads]) => {
-            const id = cost.layers[index]?.id ?? ''
-            return { key: `quads-${index}`, label: id ? `Layer '${id}'` : `Layer ${index + 1}`, value: count(quads), note: '', layer: id }
-        })
+    return layers
+        .map((layer, index) => ({ ...layer, index }))
+        .filter((layer) => layer.quads > 0)
+        .sort((a, b) => b.quads - a.quads || a.index - b.index)
+        .map((layer) => ({ key: `quads-${layer.index}`, label: layer.id ? `Layer '${layer.id}'` : `Layer ${layer.index + 1}`, value: count(layer.quads), note: '', layer: layer.id }))
 }
 
 function cpuDetails(cost: NameplateCost | null, over: Found | undefined): CostDetail[] {
@@ -336,11 +335,12 @@ function fallbackRow(cost: NameplateCost, limits: NameplateLimits): CostRow | nu
 }
 
 function measuredRows(cost: NameplateCost, limits: NameplateLimits, quadParts: CostDetail[], found: FoundCosts = {}): CostRow[] {
-    const farthest = cost.layers.reduce((best, layer) => (layer.margin > (best?.margin ?? -1) ? layer : best), cost.layers[0])
+    const farthest = cost.layers.reduce((best, layer) => ((layer.margin ?? -1) > (best?.margin ?? -1) ? layer : best), cost.layers[0])
     const quadsOver = cost.quads > limits.quads
     const cacheOver = cost.cacheBytes > limits.cacheBytes
     const cpuOver = cost.cpu > limits.cpu || !!found.cpu
-    const marginOver = cost.margin > limits.margin
+    const margin = cost.margin ?? 0
+    const marginOver = margin > limits.margin
     const cpuIssue = found.cpu ?? overCpu(cost)
     const rows = [
         withDetails(row('quads', `${count(cost.quads)} / ${count(limits.quads)}`, percentOf(cost.quads, limits.quads), quadsOver,
@@ -350,12 +350,16 @@ function measuredRows(cost: NameplateCost, limits: NameplateLimits, quadParts: C
         withDetails(row('cpu', `${count(cost.cpu)} / ${count(limits.cpu)}`, percentOf(cost.cpu, limits.cpu), cpuOver, true,
             cost.cpu === 0 && !cpuOver ? 'No formulas in this nameplate.' : overNote(cpuOver, cpuFix(cpuIssue))), cpuDetails(cost, cpuIssue), 'By part', cpuOver),
         statesRow(cost, limits),
-        row('margin', `${count(cost.margin)} px / ${count(limits.margin)} px`, percentOf(cost.margin, limits.margin), marginOver, true,
-            marginOver ? overNote(true, `Layer '${farthest?.id}' is too far out. Move it closer to the body, or delete it.`) : farthest && cost.margin > 0 ? `Farthest out: layer '${farthest.id}'.` : '',
-            cost.margin > 0 ? farthest?.id ?? '' : ''),
+        cost.margin === null
+            ? { ...row('margin', 'Within the limit', 0, false, true, `Every layer stays within ${count(limits.margin)} px of the background.`), bar: false }
+            : row('margin', `${count(margin)} px / ${count(limits.margin)} px`, percentOf(margin, limits.margin), marginOver, true,
+                marginOver ? overNote(true, `Layer '${farthest?.id}' is too far out. Move it closer to the body, or delete it.`) : farthest && margin > 0 ? `Farthest out: layer '${farthest.id}'.` : '',
+                margin > 0 ? farthest?.id ?? '' : ''),
         flashRow(cost, limits, found.flash),
-        { ...row('rebuild', count(cost.materialBuildOps), 0, false, true, cost.materialBuildOps === 0 ? 'No effects in this nameplate.' : ''), bar: false },
     ]
+    if (cost.materialBuildOps !== null) {
+        rows.push({ ...row('rebuild', count(cost.materialBuildOps), 0, false, true, cost.materialBuildOps === 0 ? 'No effects in this nameplate.' : ''), bar: false })
+    }
     const fallback = fallbackRow(cost, limits)
     if (fallback) rows.push(fallback)
     return rows
@@ -416,7 +420,7 @@ function scan(issues: EngineIssue[]): FoundCosts {
             case 'over_cpu':
                 keepLarger(found, 'cpu', { used: issueValue(facts, 'units') ?? undefined, values })
                 break
-            case 'over_quads':
+            case 'quads_over_budget':
                 found.quads = { used: issueValue(facts, 'quads') ?? undefined, values }
                 break
             case 'over_cache':
@@ -470,25 +474,30 @@ function failedRows(found: FoundCosts, limits: NameplateLimits): CostRow[] {
 }
 
 function measured<Key extends object>(
-    plain: WeakMap<Key, NameplateCost | null>,
-    flashed: WeakMap<Key, NameplateCost | null>,
+    plain: WeakMap<Key, Measured>,
+    flashed: WeakMap<Key, Measured>,
     key: Key,
+    version: number,
     measure: (flash: boolean) => NameplateCost | null,
     flash: boolean,
 ): NameplateCost | null {
-    if (flashed.has(key)) return flashed.get(key) ?? null
+    const done = flashed.get(key)
+    if (done && done.version === version) return done.cost
     const store = flash ? flashed : plain
-    if (!store.has(key)) store.set(key, measure(flash))
-    return store.get(key) ?? null
+    const known = store.get(key)
+    if (known && known.version === version) return known.cost
+    const cost = measure(flash)
+    store.set(key, { version, cost })
+    return cost
 }
 
 function previewCost(preview: NameplatePreview, flash: boolean): NameplateCost {
-    return measured(cache, flashCache, preview, (flashed) => preview.cost(flashed), flash) as NameplateCost
+    return measured(cache, flashCache, preview, preview.version, (flashed) => preview.cost(flashed), flash) as NameplateCost
 }
 
 function overBudgetCost(loaded: LoadedBundle, flash: boolean): NameplateCost | null {
     const measure = loaded.measure
-    return measure ? measured(overCache, overFlashCache, loaded, measure, flash) : null
+    return measure ? measured(overCache, overFlashCache, loaded, draftOf(loaded)?.version ?? 0, measure, flash) : null
 }
 
 export function previewCostOf(preview: NameplatePreview): NameplateCost {
@@ -510,19 +519,31 @@ function draftOf(loaded: LoadedBundle): NameplatePreview | null {
     }
 }
 
-export function costReport(loaded: LoadedBundle | null, flash = false, paint?: QuadPainter): CostReport {
-    const limits = nameplateLimits()
+const UNKNOWN_LIMITS: NameplateLimits = Object.freeze({
+    quads: Infinity,
+    cacheBytes: Infinity,
+    fallbackBytes: Infinity,
+    cpu: Infinity,
+    margin: Infinity,
+    states: Infinity,
+    flashes: Infinity,
+    flashArea: Infinity,
+})
+
+export function costReport(loaded: LoadedBundle | null, flash = false): CostReport {
+    const limits = nameplateLimits() ?? UNKNOWN_LIMITS
     const preview = loaded?.preview ?? null
     if (preview) {
         const cost = previewCost(preview, flash)
-        const rows = measuredRows(cost, limits, quadDetails(cost, preview, paint))
-        const over = rows.some((entry) => entry.over)
+        const rows = withLimitHelp(measuredRows(cost, limits, quadDetails(preview)), limits)
+        const over = rows.filter((entry) => entry.over)
+        const unfinished = over.length === 1 && over[0].id === 'flash' && !!flashUnfinished(cost)
         return {
-            status: over ? 'over' : 'ok',
-            headline: over ? OVER_HEADLINE : 'Everything is within the limits.',
+            status: over.length ? 'over' : 'ok',
+            headline: unfinished ? UNFINISHED_HEADLINE : over.length ? OVER_HEADLINE : 'Everything is within the limits.',
             rows,
             infos: costInfos(cost),
-            flashPending: cost.flashTimes === null,
+            flashPending: !cost.flashChecked && cost.flashTimes === null,
         }
     }
     const found = scan(loaded?.issues ?? [])
@@ -531,12 +552,12 @@ export function costReport(loaded: LoadedBundle | null, flash = false, paint?: Q
         return {
             status: 'over',
             headline: OVER_HEADLINE,
-            rows: measuredRows(measured, limits, quadDetails(measured, draftOf(loaded), paint), found),
+            rows: withLimitHelp(measuredRows(measured, limits, quadDetails(draftOf(loaded)), found), limits),
             infos: costInfos(measured),
-            flashPending: measured.flashTimes === null,
+            flashPending: !measured.flashChecked && measured.flashTimes === null,
         }
     }
-    const rows = failedRows(found, limits)
+    const rows = withLimitHelp(failedRows(found, limits), limits)
     if (rows.some((entry) => entry.over)) {
         return { status: 'over', headline: OVER_HEADLINE, rows, infos: [], flashPending: false }
     }

@@ -12,10 +12,9 @@ export const BADGE_TYPE = 'nameplate_badge'
 export const BADGE_TARGET = '$badge'
 export const PLATE_TYPE = 'nameplate_plate'
 export const PLATE_TARGET = '$plate'
-export const LAYOUT_CAPABILITY = 'layout'
-export const CAPABILITIES = ['canvas', 'sprites', 'flags', 'materials', LAYOUT_CAPABILITY]
 export const NAME_MASK = '$name'
 export const PER_PLAYER_PHASE = 'per_player'
+export const NAMEPLATE_DATA_VERSION = 1
 
 export type Depth = 'behind' | 'background' | 'over_background' | 'over_text'
 export type Anchor =
@@ -27,7 +26,7 @@ export type SpriteAnchor = Anchor | NameAnchor
 export type Interpolation = 'step' | 'linear' | 'ease'
 export type Channel = 'frame' | 'position' | 'opacity' | 'visible'
 export const REACTIONS = ['sneaking', 'sprinting', 'hurt', 'on_fire', 'swimming', 'gliding', 'riding', 'sleeping', 'emote'] as const
-export type Reaction = typeof REACTIONS[number]
+export type Reaction = string
 export type ReactionMode = 'while' | 'start' | 'stop'
 export type ReducedMode = 'auto' | 'drop'
 
@@ -54,6 +53,7 @@ export interface VariantData {
 }
 
 export interface NameplateData {
+    version?: number
     id: string
     fps: number
     ownsBackground: boolean

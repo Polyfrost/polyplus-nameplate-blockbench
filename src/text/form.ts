@@ -1,3 +1,4 @@
+import { engineAnchors, offeredBy } from '../engine'
 import { takesAt } from '../art/layout'
 import { limited } from '../elements/limits'
 import { layerNodes } from '../elements/nodes'
@@ -233,7 +234,7 @@ export function badgeConfig(badge: BadgeSettings, own: BadgeOverride | null, opt
     const shown = options.shown ?? (() => true)
     const refs = paletteRefs([badge.tint, badge.decorationColor, own?.tint, own?.decorationColor])
     const anchors: Record<string, string> = {}
-    for (const anchor of BADGE_ANCHORS) anchors[anchor] = ANCHOR_LABELS[anchor] ?? anchor
+    for (const anchor of offeredBy(BADGE_ANCHORS, engineAnchors())) anchors[anchor] = ANCHOR_LABELS[anchor] ?? anchor
     const placed = (result: Result) => shown(result) && result?.bs_placement === 'placed'
     const onBody = (result: Result) => placed(result) && !!result?.bs_of
     const decorated = (result: Result) => shown(result) && (result?.bs_decoration === 'shadow' || result?.bs_decoration === 'outline')

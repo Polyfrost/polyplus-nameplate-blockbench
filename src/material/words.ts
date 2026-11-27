@@ -105,9 +105,9 @@ export function materialProblem(issue: EngineIssue): MaterialProblem | null {
         const who = owner(used)
         const text = issue.code === 'missing_file'
             ? `needs the texture ${texture}.png, which is not in this project. Import the zip again with its textures folder.`
-            : issue.code === 'texture_format'
+            : issue.code === 'png_invalid'
                 ? `uses ${texture}.png, which is not a PNG file.`
-                : issue.code === 'texture_size'
+                : issue.code === 'texture_too_large' || issue.code === 'texture_not_power_of_two'
                     ? `uses ${texture}.png, which is ${issueValue(issue, 'width') ?? 0} x ${issueValue(issue, 'height') ?? 0} px. Each side must be 1, 2, 4, 8, 16, 32, 64, 128 or 256 px.`
                     : `uses ${texture}.png: ${sentence(message)}`
         return { text: `${who.name}: ${text}`, target: who.target }

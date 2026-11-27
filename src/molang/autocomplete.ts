@@ -1,4 +1,5 @@
 import { isNameplateActive } from '../format'
+import { cosmeticCompletions } from '../cosmetic/autocomplete'
 import { labelFor, MolangName, NAMEPLATE_FUNCTIONS, NAMEPLATE_QUERIES } from './catalog'
 
 interface AutocompleteResult {
@@ -78,7 +79,9 @@ export function registerMolangAutocomplete() {
     const original = keyframes.autocomplete
     keyframes.autocomplete = function (this: any, text: string, position: number) {
         if (isNameplateActive()) return nameplateAutocomplete(text, position)
-        return original.call(this, text, position)
+        const base = original.call(this, text, position) ?? []
+        const extra = cosmeticCompletions(text, position)
+        return extra.length ? [...extra, ...base] : base
     }
     restore = () => {
         if (had) keyframes.autocomplete = original

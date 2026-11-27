@@ -1,4 +1,4 @@
-import { describe, loadBundle } from '../engine'
+import { describe, disposeLoad, loadBundle } from '../engine'
 import { plainIssueText } from '../export/issues'
 import { FORMAT_ID } from '../model'
 import { applyPlan } from './build'
@@ -10,6 +10,7 @@ import { emptyMaterials } from '../material/types'
 import { confirmBox, messageBox } from '../util/dialogs'
 import { defineAction } from '../util/actions'
 import { escapeHtml, htmlList, plural } from '../util/text'
+import { cosmeticKindOf, importCosmeticZip } from '../cosmetic/import'
 
 export { mergeExtra } from './extra'
 
@@ -71,6 +72,7 @@ function pickFiles(onPicked: (results: Filesystem.FileResult[]) => void) {
 function readFiles(files: Record<string, string>, skipped: string[], binary: Record<string, Uint8Array>): { plan: ImportPlan, problems: string[] } | null {
     const bundleFiles = bundleFileList(files)
     const loaded = loadBundle(bundleFiles, binary)
+    disposeLoad(loaded)
     if (loaded.skipped) {
         showError(`The game would skip this zip: ${loaded.skipped}.`)
         return null
@@ -137,6 +139,11 @@ export function openSource(text: string, id: string) {
 
 async function receive(results: Filesystem.FileResult[], picked: PickedFiles) {
     await collectFiles(results, picked)
+    const zip = results.find((result) => /\.zip$/i.test(result.name || '') && result.content instanceof ArrayBuffer)
+    if (zip && cosmeticKindOf(picked.files)) {
+        await importCosmeticZip(zip.name, zip.content as ArrayBuffer)
+        return
+    }
     if (picked.errors.length > 0) {
         showError("Some files couldn't be read:", picked.errors)
         return

@@ -1,18 +1,14 @@
-import * as EngineModule from '../../engine/PolyPlus-nameplate-engine.js'
-import { describe, drawRasterLayer, layerBounds, NameplateLayer } from '../engine'
+import { describe, drawRasterLayer, layerBounds, loadBundle, NameplateLayer, NameplatePreview } from '../engine'
+import { plainMessage } from '../checks/words'
 import { CrowdLayout, layoutTag as crowdLayoutTag, TextRun } from '../preview/crowd'
 import { paintFillJson } from '../elements/fill'
-import { BodyArtData, CAPABILITIES, LAYOUT_CAPABILITY, PaletteData } from '../model'
+import { BodyArtData, PaletteData } from '../model'
 import { colorwaysJson, slotJson } from '../palette/blend'
 import { readSprites } from '../palette/sprites'
 import { bodyCorners, cornerFields, readCorners } from '../corners/shape'
 import { drawText, measure } from '../font'
 import { artJson } from './layout'
 import { cutsOf, Size } from './cuts'
-
-const api = EngineModule.org.polyfrost.polyplus.nameplate.engine.js
-type RawPreview = EngineModule.org.polyfrost.polyplus.nameplate.engine.js.NameplatePreview
-type RawBlock = EngineModule.org.polyfrost.polyplus.nameplate.engine.js.NameplateBlock
 
 const BODY_ID = 'body'
 const ART_SPRITE = 'body_art'
@@ -42,7 +38,7 @@ interface ArtSource {
 }
 
 interface ArtPreview {
-    preview: RawPreview | null
+    preview: NameplatePreview | null
     issues: string[]
 }
 
@@ -78,7 +74,6 @@ export function loadArtPreview(source: ArtSource, art: BodyArtData): ArtPreview 
         'manifest.json': JSON.stringify({
             format: 1,
             id: 'body_art_preview',
-            requires: ['canvas', 'sprites', LAYOUT_CAPABILITY],
             fps: 10,
             loop: 20,
             ownsBackground: false,
@@ -89,12 +84,11 @@ export function loadArtPreview(source: ArtSource, art: BodyArtData): ArtPreview 
         [`sprites/${ART_SPRITE}.json`]: JSON.stringify(rows),
     }
     try {
-        const input = Object.entries(files).map(([path, text]) => new api.NameplateFile(path, text))
-        const load = api.nameplateLoadPreview(input, CAPABILITIES)
-        const issues = Array.from(load.issues)
+        const load = loadBundle(files, {})
+        const issues = [...load.issues, ...load.warnings]
             .filter((issue) => issue.path.includes('#art') || issue.path.includes(ART_SPRITE))
-            .map((issue) => issue.message)
-        return { preview: load.preview ?? null, issues }
+            .map((issue) => `The body art ${plainMessage(issue.message)}`)
+        return { preview: load.preview ?? load.draft?.() ?? null, issues }
     } catch (error) {
         return { preview: null, issues: [describe(error)] }
     }
@@ -114,12 +108,18 @@ function layoutTag(name: string, lines: number): CrowdLayout {
     return crowdLayoutTag({ name, above: lines >= 3 ? [ABOVE] : [], below: lines >= 2 ? [BELOW] : [] }, measure)
 }
 
-function paintTile(preview: RawPreview, name: string, lines: number): Tile {
+function bodyRect(layers: NameplateLayer[]): Int32Array | null {
+    const body = layers.find((layer) => layer.layer === BODY_ID)
+    if (!body || body.rasterWidth <= 0 || body.rasterHeight <= 0) return null
+    const bounds = layerBounds([body])
+    return Int32Array.of(bounds.minX, bounds.minY, bounds.minX + bounds.width, bounds.minY + bounds.height)
+}
+
+function paintTile(preview: NameplatePreview, name: string, lines: number): Tile {
     const layout = layoutTag(name, lines)
     const variant = preview.variants[0] ?? 'default'
-    const layers = Array.from(preview.paint(variant, layout.block as unknown as RawBlock, 0, 0)) as unknown as NameplateLayer[]
-    const raw = preview.bodyRect(BODY_ID, layout.block as unknown as RawBlock)
-    const body = raw ? Int32Array.from(raw) : null
+    const layers = preview.paint(variant, layout.block, 0, 0)
+    const body = bodyRect(layers)
     const marks = [{ left: 0, top: 0, x: 0, y: 0, width: layout.width, mirrorX: false, rasterWidth: layout.width, rasterHeight: layout.height } as NameplateLayer]
     const bounds = layerBounds([...layers, ...marks])
     return { layers, runs: layout.runs, body, minX: bounds.minX, minY: bounds.minY, width: bounds.width, height: bounds.height }
@@ -131,7 +131,7 @@ interface PreviewLayout {
     rows: number[]
 }
 
-export function paintTiles(preview: RawPreview): PreviewLayout {
+export function paintTiles(preview: NameplatePreview): PreviewLayout {
     const tiles = LINE_LABELS.map((_, line) => NAMES.map((name) => paintTile(preview, name, line + 1)))
     const columns = NAMES.map((_, column) => Math.max(...tiles.map((row) => row[column].width)))
     const rows = tiles.map((row) => Math.max(...row.map((tile) => tile.height)))

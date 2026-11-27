@@ -11,5 +11,5 @@
         "types": ["blockbench-types"],
         "noEmit": true
     },
-    "include": ["src/**/*.ts", "engine/*.d.ts"]
+    "include": ["src/**/*.ts"]
 }

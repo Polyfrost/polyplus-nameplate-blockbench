@@ -5,7 +5,7 @@ import { badgeNode, isBadgeNode } from '../badge/node'
 import { AT_PROPERTY, atValue, isNameAnchor, takesAt } from '../art/layout'
 import { currentBundle } from '../compile'
 import { ANCHORS } from '../elements/read'
-import { BlockRect, drawLayers, layerBounds, LayerBounds, layerLeft, layerTop, NameplateBadgePose, NameplateLayer, NameplatePreview, STILL_BADGE } from '../engine'
+import { BlockRect, drawPlateLayers, layerBounds, LayerBounds, layerLeft, layerTop, NameplateBadgePose, NameplateLayer, NameplatePreview, STILL_BADGE } from '../engine'
 import { wholeClamped } from '../util/num'
 import { currentFps, isNameplateActive } from '../format'
 import { FORMAT_ID, SPRITE_TYPE } from '../model'
@@ -34,12 +34,13 @@ import {
 } from '../preview'
 import { onLight } from './events'
 import { drawOffPaletteMarks } from '../palette/highlight'
-import { badgeMarks, drawBadge, drawBadgeArt, nameDrawStyle } from '../text/draw'
+import { badgeMarks, drawBadge, nameDrawStyle } from '../text/draw'
 import { defineAction } from '../util/actions'
 import { disposeAll, dropToolbar } from '../util/teardown'
 import { undoEdit } from '../util/undo'
-import { CrowdBox, CrowdLayout, CrowdTag, drawCrowd, drawRun, fillBackground, fitCrowd, loopBox, movedRun, paintCrowd, tagBox, widenBox } from '../preview/crowd'
-import { tagState } from '../preview/live'
+import { CrowdBox, CrowdLayout, CrowdTag, drawCrowd, drawRun, drawUnderText, fillBackground, fitCrowd, loopBox, movedRun, paintCrowd, tagBox, widenBox } from '../preview/crowd'
+import { stillState } from '../preview/live'
+import { stopPlayback, togglePlayback } from './playback'
 import { CROWD_TOGGLE, setCrowdView } from '../preview/panel'
 import { backgroundColor, currentLook, effectLayers, previewOptions, tagPadding, VANILLA_BACKGROUND } from '../preview/options'
 import { LINE_CHOICES, LOOK_SELECT, makeOptionItems, OPTIONS_ACTION, syncOptionItems, zoomFrame } from '../preview/menu'
@@ -92,8 +93,6 @@ const WARDROBE_SCALE = 2
 const WARDROBE_BACKGROUND = '#24262C'
 const WARDROBE_TEXT = '#C8CAD0'
 const WARDROBE_GAP = 10
-const INLINE_BADGE_ADVANCE = 10
-const BADGE_SIZE = 8
 const AREA_STYLE = 'flex: 1 1 auto; min-height: 0; position: relative; display: flex; flex-direction: column;'
 const STRIP_HOST_STYLE = 'flex: 0 1 auto; min-height: 32px; max-height: 45%; display: flex; flex-direction: column;'
 const AREA_MIN_HEIGHT = 'min(160px, 60%)'
@@ -177,7 +176,7 @@ interface KeyMove {
 
 const view: View = { left: 0, top: 0, scale: 1 }
 
-const state: { zoom: number, timer: ReturnType<typeof setInterval> | null, drag: Drag | null, hover: StageTarget | null, size: string, side: { node: any, flip: number } | null } = { zoom: 0, timer: null, drag: null, hover: null, size: '', side: null }
+const state: { zoom: number, drag: Drag | null, hover: StageTarget | null, size: string, side: { node: any, flip: number } | null } = { zoom: 0, drag: null, hover: null, size: '', side: null }
 
 const handles: {
     root: HTMLElement | null
@@ -270,7 +269,7 @@ export function drawCover(preview: NameplatePreview, variant: string, scale: num
     previewUi.variant = variant
     try {
         const look = { detail: 'full' as const, still: true, padding: tagPadding() }
-        const stateFor = (key: string, seed: number) => tagState(key, variant, 0, seed)
+        const stateFor = () => stillState(preview)
         const [tag] = paintCrowd(preview, variant, 0, mainSeed(), nameWidthOf, () => true, mainSpec(), stateFor, look)
         if (!tag) return null
         const box = tagBox(tag)
@@ -281,7 +280,7 @@ export function drawCover(preview: NameplatePreview, variant: string, scale: num
         if (!ctx) return null
         setComposePreview(preview)
         beginCompose()
-        drawCrowd(ctx, [{ tag, box, x: 0, y: 0 }], scale, COVER_MARGIN, !preview.ownsBackground(variant), crowdName)
+        drawCrowd(ctx, [{ tag, box, x: 0, y: 0 }], scale, COVER_MARGIN, !preview.ownsBackground(variant), crowdName, 1)
         return canvas
     } finally {
         previewUi.variant = shownVariant
@@ -301,12 +300,6 @@ function drawCrowdStage(canvas: HTMLCanvasElement, result: PreviewResult) {
     drawBackdrop(ctx, previewOptions.backdrop, fit.scale)
     beginCompose()
     drawCrowd(ctx, fit.placed, fit.scale, MARGIN, showsBackground(result), crowdName)
-}
-
-function inlineBadge(result: PreviewResult | null, row: { x: number, y: number }): NameplateLayer | null {
-    if (!currentLook().inlineBadge || !badgeMarks(result?.badge).length) return null
-    const x = row.x - INLINE_BADGE_ADVANCE
-    return mark(x, row.y, BADGE_SIZE, BADGE_SIZE)
 }
 
 interface TagFrame {
@@ -339,7 +332,6 @@ function letterMarks(result: PreviewResult | null, layout: CrowdLayout): Namepla
 function tagMarks(result: PreviewResult | null, layout: CrowdLayout, background: boolean): NameplateLayer[] {
     const row = shownRow(result, layout)
     const plate = plateOf(result)
-    const inline = inlineBadge(result, row)
     const rect = layout.background
     return [
         mark(row.x, row.y, row.width, row.height),
@@ -347,7 +339,7 @@ function tagMarks(result: PreviewResult | null, layout: CrowdLayout, background:
             const moved = movedRun(run, plate)
             return mark(moved.x, moved.y, Math.max(1, moved.width), GLYPH_ROWS)
         }),
-        ...(inline ? [inline] : badgeMarks(result?.badge)),
+        ...badgeMarks(result?.badge),
         ...(background ? [mark(rect.x0, rect.y0, rect.x1 - rect.x0, rect.y1 - rect.y0)] : []),
     ]
 }
@@ -355,8 +347,7 @@ function tagMarks(result: PreviewResult | null, layout: CrowdLayout, background:
 function targetRect(target: StageTarget, result: PreviewResult | null, layout: CrowdLayout): Rect | null {
     const row = shownRow(result, layout)
     if (target === 'name') return row
-    const inline = inlineBadge(result, row)
-    const mark = inline ?? badgeMarks(result?.badge)[0]
+    const mark = badgeMarks(result?.badge)[0]
     return mark ? { x: layerLeft(mark), y: layerTop(mark), width: mark.rasterWidth, height: mark.rasterHeight } : null
 }
 
@@ -467,7 +458,7 @@ function measureCrowd(result: PreviewResult): Map<string, CrowdBox> {
     const keep = shownLayer(result, variant)
     const loop = Math.max(1, preview.loop)
     const samples = look.still ? 1 : Math.min(loop, MAX_CROWD_BOUND_FRAMES)
-    const paint = (tag: CrowdTag, frame: number) => preview.paint(variant, tag.block, look.still ? 0 : frame, tag.seed, null, look.detail).filter(keep)
+    const paint = (tag: CrowdTag, frame: number) => preview.paint(variant, tag.block, look.still ? 0 : frame, tag.seed, null, look).filter(keep)
     for (const tag of result.crowd) boxes.set(tag.key, loopBox(tag, loop, samples, paint))
     return boxes
 }
@@ -494,11 +485,10 @@ function steadyCrowd(result: PreviewResult): Map<string, CrowdBox> {
 
 function drawTag(ctx: CanvasRenderingContext2D, frame: TagFrame) {
     const { result, layout, scale, originX, originY, background } = frame
-    const row = shownRow(result, layout)
     const plate = plateOf(result)
-    if (background) fillBackground(ctx, layout.background, layout.padded ? backgroundColor() : VANILLA_BACKGROUND, scale, originX, originY)
     beginCompose()
-    drawLayers(ctx, shown.layers.filter((layer) => layer.depth !== FRONT_DEPTH), scale, originX, originY)
+    const fill = background ? () => fillBackground(ctx, layout.background, layout.padded ? backgroundColor() : VANILLA_BACKGROUND, scale, originX, originY) : null
+    drawUnderText(ctx, shown.layers, fill, scale, originX, originY)
     for (const run of layout.runs) {
         if (run.kind === 'name') continue
         const moved = movedRun(run, plate)
@@ -506,10 +496,8 @@ function drawTag(ctx: CanvasRenderingContext2D, frame: TagFrame) {
     }
     const name = nameRow()
     drawLetters(ctx, previewName(), originX + plate.dx * scale + name.x * scale, originY + plate.dy * scale + name.y * scale, scale, nameOptions(), result?.letters)
-    const inline = inlineBadge(result, row)
-    if (inline) drawBadgeArt(ctx, originX + inline.x * scale, originY + inline.y * scale, scale)
-    else drawBadge(ctx, scale, originX, originY, result?.badge)
-    drawLayers(ctx, shown.layers.filter((layer) => layer.depth === FRONT_DEPTH), scale, originX, originY)
+    drawBadge(ctx, scale, originX, originY, result?.badge)
+    drawPlateLayers(ctx, shown.layers.filter((layer) => layer.depth === FRONT_DEPTH), scale, originX, originY)
     drawOffPaletteMarks(ctx, shown.layers, shown.order, scale, originX, originY)
     ctx.lineWidth = 1
     const outline = (rect: Rect, dash: number[]) => {
@@ -1330,32 +1318,9 @@ function zoomStage(direction: number) {
     drawStage()
 }
 
-export function stopPlayback() {
-    if (state.timer !== null) {
-        clearInterval(state.timer)
-        state.timer = null
-    }
-    previewUi.playing = false
-    const play = (BarItems as any).polyplus_nameplate_play as Action | undefined
-    play?.setIcon?.('play_arrow')
-}
-
-function startPlayback() {
-    stopPlayback()
-    previewUi.playing = true
-    const play = (BarItems as any).polyplus_nameplate_play as Action | undefined
-    play?.setIcon?.('pause')
-    const interval = Math.max(20, Math.round(1000 / Math.max(1, previewUi.fps)))
-    state.timer = setInterval(() => {
-        previewUi.frame = (previewUi.frame + 1) % Math.max(1, previewUi.loop)
-        redraw(false)
-        updateItems()
-    }, interval)
-}
-
-function togglePlayback() {
-    if (previewUi.playing) stopPlayback()
-    else startPlayback()
+function playTick() {
+    redraw(false)
+    updateItems()
 }
 
 function makeItems(): BarItem[] {
@@ -1466,7 +1431,7 @@ function makeItems(): BarItem[] {
                 previewUi.seed = value
             },
         ),
-        viewAction('polyplus_nameplate_play', 'Play Loop', 'play_arrow', togglePlayback, design),
+        viewAction('polyplus_nameplate_play', 'Play Loop', 'play_arrow', () => togglePlayback(playTick), design),
         slider(
             'polyplus_nameplate_frame',
             'Frame',

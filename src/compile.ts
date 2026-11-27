@@ -1,6 +1,23 @@
-import { animationPath, checkAnimations, dropWrapKeys, scheduleGroups, scheduleIdOf } from './animate/checks'
+import { animationPath, checkAnimations, dropWrapKeys } from './animate/checks'
 import { isWhile } from './animate/props'
-import { describe, loadBundle } from './engine'
+import {
+    analysisOf,
+    AuthoringQueue,
+    authoringInput,
+    authoringIssues,
+    authoringNow,
+    backgroundRunner,
+    describe,
+    EngineIssue,
+    loadBundle,
+    LoadedBundle,
+    LoadMode,
+    PreviewSlot,
+    reactionSignal,
+    stopBackgroundChecks,
+    unknownRequires,
+} from './engine'
+import type { RawIssue } from '@plusrenderer/renderer/nameplate.js'
 import { bodyJson } from './kinds/body'
 import { spriteJson as spriteLayerJson } from './kinds/sprite'
 import { stringifyJson } from './util/bundleJson'
@@ -9,7 +26,7 @@ import { currentExtra, mergeExtra } from './import/extra'
 import { groupBreakpointsJson } from './library/groups'
 import { applyFlags } from './flags/compile'
 import { applyPaletteAnimation } from './palanim/compile'
-import { applyMotionManifest, layerTextureUuids, usesSprites } from './motion/compile'
+import { applyMotionManifest, layerTextureUuids } from './motion/compile'
 import { pathJson } from './kinds/path'
 import { emitterJson } from './kinds/emitter'
 import { BURST_CHANNEL, BurstKey, SPEED_CHANNEL, SpeedKey } from './motion/types'
@@ -22,7 +39,8 @@ import { applySlotMolang } from './molang/slots'
 import { textBadgeManifest, variantStyleJson } from './text/compile'
 import { letterTracksJson, withLetters } from './text/reaction'
 import { colorwaysJson, slotJson } from './palette/blend'
-import { maskTarget, usesLayout, withLayoutData } from './art/layout'
+import { createListenerSet } from './util/events'
+import { maskTarget, withLayoutData } from './art/layout'
 import {
     AnimationData,
     BundleIssue,
@@ -30,7 +48,6 @@ import {
     CompiledBundle,
     KeyData,
     LayerData,
-    LAYOUT_CAPABILITY,
     PER_PLAYER_PHASE,
     ProjectSnapshot,
     SpriteFrames,
@@ -41,15 +58,109 @@ const CHANNEL_ORDER: Channel[] = ['frame', 'position', 'opacity', 'visible']
 const TAGGED_INTERPOLATIONS = ['linear', 'ease']
 const TEXTURE_GONE = 'texture not found'
 const NO_SPRITE_ID = "sprite id ''"
+const FULL_CHECK_DELAY_MS = 600
 
 let snapshotSource: (() => ProjectSnapshot) | null = null
 let cacheKey: string | null = null
 let cacheValue: CompiledBundle | null = null
+const compiledLoads = new WeakMap<Record<string, string>, LoadedBundle>()
+const engineFilters = new WeakMap<Record<string, string>, (issue: BundleIssue) => boolean>()
+const fullIssues = new WeakMap<Record<string, string>, EngineIssue[]>()
+const failedChecks = new WeakSet<Record<string, string>>()
+const checkedBundles = new WeakMap<CompiledBundle, CompiledBundle>()
+const checksDone = createListenerSet('full checks listener failed')
+let fullChecks: AuthoringQueue | null = null
+const compiledSlot = new PreviewSlot()
 
 export function setSnapshotSource(source: () => ProjectSnapshot): void {
     snapshotSource = source
+    forgetCompiled()
+}
+
+export function compiledLoad(files: Record<string, string>): LoadedBundle | null {
+    return compiledLoads.get(files) ?? null
+}
+
+export function forgetCompiled(): void {
     cacheKey = null
     cacheValue = null
+    compiledSlot.clear()
+    fullChecks?.cancel()
+}
+
+export function stopFullChecks(): void {
+    forgetCompiled()
+    fullChecks?.cancel()
+    fullChecks = null
+    stopBackgroundChecks()
+}
+
+export function onFullChecks(listener: () => void): () => void {
+    return checksDone.on(listener)
+}
+
+function issueKey(issue: BundleIssue): string {
+    return `${(issue as EngineIssue).code ?? ''}|${issue.path}|${issue.message}`
+}
+
+function isError(issue: EngineIssue): boolean {
+    return issue.level !== 'warning' && issue.level !== 'info'
+}
+
+function checkedBundle(bundle: CompiledBundle, found: EngineIssue[]): CompiledBundle {
+    let checked = checkedBundles.get(bundle)
+    if (!checked) {
+        const keep = engineFilters.get(bundle.files) ?? (() => true)
+        const known = new Set(bundle.issues.map(issueKey))
+        const extra = found.filter((issue) => isError(issue) && keep(issue) && !known.has(issueKey(issue)))
+        checked = { ...bundle, issues: [...bundle.issues, ...extra] }
+        checkedBundles.set(bundle, checked)
+    }
+    return checked
+}
+
+function applyFullChecks(files: Record<string, string>, raw: RawIssue[]) {
+    const found = authoringIssues(raw)
+    fullIssues.set(files, found)
+    const loaded = compiledLoads.get(files)
+    const preview = loaded?.preview ?? loaded?.draft?.() ?? null
+    preview?.check(found)
+    checksDone.notify()
+}
+
+function withFullChecks(bundle: CompiledBundle): CompiledBundle {
+    const found = fullIssues.get(bundle.files)
+    if (found) return checkedBundle(bundle, found)
+    if (!engineFilters.has(bundle.files)) return bundle
+    const { files } = bundle
+    const binary = bundle.binary ?? {}
+    fullChecks ??= new AuthoringQueue(backgroundRunner, FULL_CHECK_DELAY_MS)
+    fullChecks.request(files, () => authoringInput(files, binary), (raw) => applyFullChecks(files, raw))
+    return bundle
+}
+
+export function finishFullChecks(): CompiledBundle {
+    const bundle = currentBundle()
+    if (fullIssues.has(bundle.files) || !engineFilters.has(bundle.files)) return bundle
+    fullChecks?.cancel()
+    let raw: RawIssue[] | null = null
+    try {
+        raw = authoringNow(authoringInput(bundle.files, bundle.binary ?? {}))
+    } catch (error) {
+        console.error('[polyplus_nameplate] the full checks failed', error)
+    }
+    if (raw) {
+        failedChecks.delete(bundle.files)
+        applyFullChecks(bundle.files, raw)
+    } else {
+        failedChecks.add(bundle.files)
+        checksDone.notify()
+    }
+    return currentBundle()
+}
+
+export function fullChecksFailed(bundle: CompiledBundle): boolean {
+    return failedChecks.has(bundle.files) && !fullIssues.has(bundle.files)
 }
 
 function spriteJson(sprite: SpriteFrames): Record<string, unknown> {
@@ -109,19 +220,10 @@ function tracksJson(
     return result
 }
 
-function inSteps(tracks: TrackData[], step: number): TrackData[] {
-    if (step <= 1) return tracks
-    return tracks.map((track) => {
-        const byStep = new Map<number, KeyData>()
-        for (const key of track.keys) byStep.set(Math.round(key.step / step), { ...key, step: Math.round(key.step / step) })
-        return { ...track, keys: Array.from(byStep.values()) }
-    })
-}
-
-function burstsInSteps(keys: BurstKey[], step: number): unknown[][] {
-    const byStep = new Map<number, number>()
-    for (const key of keys) byStep.set(Math.round(key.step / Math.max(1, step)), key.count)
-    return Array.from(byStep.entries())
+function burstsJson(keys: BurstKey[]): unknown[][] {
+    const byFrame = new Map<number, number>()
+    for (const key of keys) byFrame.set(key.step, key.count)
+    return Array.from(byFrame.entries())
         .sort((a, b) => a[0] - b[0])
         .map(([at, count]) => [at, count])
 }
@@ -129,12 +231,11 @@ function burstsInSteps(keys: BurstKey[], step: number): unknown[][] {
 function addBursts(
     tracks: Record<string, Record<string, unknown>>,
     animation: AnimationData,
-    step: number,
     resolve: (reference: string) => string,
 ) {
     for (const burst of animation.bursts ?? []) {
         const target = resolve(burst.target)
-        tracks[target] = { ...(tracks[target] ?? {}), [BURST_CHANNEL]: burstsInSteps(burst.keys, step) }
+        tracks[target] = { ...(tracks[target] ?? {}), [BURST_CHANNEL]: burstsJson(burst.keys) }
     }
 }
 
@@ -159,7 +260,7 @@ function triggeredTracks(
     issues: BundleIssue[],
 ): Record<string, Record<string, unknown>> {
     const tracks: Record<string, Record<string, unknown>> = tracksJson(animation.tracks, resolve, issues, animation.name)
-    addBursts(tracks, animation, 1, resolve)
+    addBursts(tracks, animation, resolve)
     for (const speed of animation.speeds ?? []) {
         const target = resolve(speed.target)
         tracks[target] = { ...(tracks[target] ?? {}), [SPEED_CHANNEL]: speedKeysJson(speed.keys) }
@@ -174,7 +275,7 @@ function triggerJson(animation: AnimationData): unknown {
     if (!trigger) return null
     switch (trigger.kind) {
         case 'reaction':
-            return { reaction: trigger.reaction, on: trigger.on }
+            return { reaction: reactionSignal(trigger.reaction), on: trigger.on }
         case 'appear':
             return { appear: trigger.seconds }
         default:
@@ -189,23 +290,21 @@ function animationsJson(
     issues: BundleIssue[],
 ): Record<string, unknown> {
     const animations = snapshot.animations ?? []
-    const groups = scheduleGroups(animations, snapshot.layers)
     const result: Record<string, unknown> = {}
     for (const animation of animations) {
         if (animation.schedule) {
-            const step = groups.get(scheduleIdOf(animation))?.step ?? 1
             const schedule: Record<string, unknown> = {
-                window: Math.round(animation.schedule.window / step),
-                jitter: Math.round(animation.schedule.jitter / step),
+                window: animation.schedule.window,
+                jitter: animation.schedule.jitter,
                 chance: animation.schedule.chance,
             }
             if (animation.schedule.id !== null) schedule.id = animation.schedule.id
             if (animation.schedule.weight !== 1) schedule.weight = animation.schedule.weight
-            const tracks = tracksJson(inSteps(animation.tracks, step), resolve, issues, animation.name)
-            addBursts(tracks, animation, step, resolve)
+            const tracks = tracksJson(animation.tracks, resolve, issues, animation.name)
+            addBursts(tracks, animation, resolve)
             result[animation.name] = {
                 schedule,
-                length: Math.round(animation.length / step),
+                length: animation.length,
                 tracks,
             }
             continue
@@ -220,12 +319,6 @@ function animationsJson(
         result[animation.name] = entry
     }
     return result
-}
-
-function usesFlags(layers: LayerData[], manifest: Record<string, unknown>): boolean {
-    const variants = manifest.variants as Record<string, Record<string, unknown>> | undefined
-    if (variants && Object.values(variants).some((variant) => typeof variant.flag === 'string')) return true
-    return layers.some((layer) => layer.kind === 'body' && (layer.fill?.kind === 'flag' || layer.rings.some((ring) => ring.kind === 'flag')))
 }
 
 function covers(prefix: string, path: string): boolean {
@@ -247,7 +340,7 @@ function layerFile(
     return spriteLayerJson(layer, spriteIds, issues)
 }
 
-export function compile(source: ProjectSnapshot): CompiledBundle {
+export function compile(source: ProjectSnapshot, mode: LoadMode = 'authoring'): CompiledBundle {
     const issues: BundleIssue[] = []
     const files: Record<string, string> = {}
     const loopFrames = source.loop ? source.loop.length : DEFAULT_LOOP_FRAMES
@@ -306,9 +399,6 @@ export function compile(source: ProjectSnapshot): CompiledBundle {
         })
     }
 
-    const requires = ['canvas']
-    if (snapshot.layers.some((layer) => (!isMaterialLayer(layer) && usesSprites(layer)) || (layer.kind === 'body' && !!layer.art))) requires.push('sprites')
-
     const maskWarnings: BundleIssue[] = []
     const resolveMask = (layer: LayerData): string | null => {
         const target = maskTarget(layer, (reference) => layerReferences.get(reference))
@@ -325,8 +415,9 @@ export function compile(source: ProjectSnapshot): CompiledBundle {
     }
     const manifest: Record<string, unknown> = {
         format: 1,
+        kind: 'nameplate',
         id: nameplate.id,
-        requires,
+        requires: [],
         fps: nameplate.fps,
         loop: loopFrames,
         ownsBackground: nameplate.ownsBackground,
@@ -398,9 +489,6 @@ export function compile(source: ProjectSnapshot): CompiledBundle {
     applyPaletteAnimation(nameplate.palette, loopFrames, manifest, issues)
     applyFlags(snapshot.flags, manifest, files, issues)
     applySlotMolang(manifest, nameplate.palette, snapshot.slotMolang, issues)
-    if (usesFlags(snapshot.layers, manifest)) requires.push('flags')
-    const badgeFollows = !!nameplate.badge?.follow || Object.values(nameplate.variants).some((variant) => variant.badge?.follow !== undefined)
-    if (usesLayout(snapshot.layers) || badgeFollows || (manifest.layers as Array<Record<string, unknown>>).some((entry) => !!entry.mask)) requires.push(LAYOUT_CAPABILITY)
     const binary = applyMaterials(snapshot.layers, snapshot.materials, manifest, files)
     files['manifest.json'] = stringifyJson(manifest)
     files['palettes.json'] = stringifyJson({
@@ -413,10 +501,18 @@ export function compile(source: ProjectSnapshot): CompiledBundle {
     for (const [id, entry] of usedSprites) files[`sprites/${id}.json`] = entry.text
 
     mergeExtra(files)
-    const loaded = loadBundle(files, binary)
+    const loaded = loadBundle(files, binary, mode)
     const covered = checks.issues.map((issue) => issue.path)
-    issues.push(...loaded.issues.filter((issue) => !issue.message.startsWith(NO_SPRITE_ID) && !covered.some((prefix) => covers(prefix, issue.path))))
+    const fromEngine = (issue: BundleIssue) => !issue.message.startsWith(NO_SPRITE_ID) && !covered.some((prefix) => covers(prefix, issue.path))
+    issues.push(...loaded.issues.filter(fromEngine))
     if (loaded.skipped) issues.push({ path: '', message: `skipped: ${loaded.skipped}` })
+    const requires = analysisOf(loaded)?.requires
+    if (requires) {
+        const manifest = JSON.parse(files['manifest.json'])
+        files['manifest.json'] = stringifyJson({ ...manifest, requires: [...requires, ...unknownRequires(manifest.requires)] })
+    }
+    compiledLoads.set(files, loaded)
+    if (mode === 'client') engineFilters.set(files, fromEngine)
 
     return { files, issues, warnings: [...checks.warnings, ...maskWarnings, ...variantWarnings], binary }
 }
@@ -440,11 +536,12 @@ export function currentBundle(): CompiledBundle {
     try {
         const snapshot = withLetters(withLayoutData(withMasks(snapshotSource())))
         const key = stringifyJson(snapshot) +JSON.stringify(currentExtra())
-        if (cacheKey === key && cacheValue) return cacheValue
-        const bundle = compile(snapshot)
+        if (cacheKey === key && cacheValue) return withFullChecks(cacheValue)
+        const bundle = compile(snapshot, 'client')
         cacheKey = key
         cacheValue = bundle
-        return bundle
+        compiledSlot.set(compiledLoads.get(bundle.files))
+        return withFullChecks(bundle)
     } catch (error) {
         return {
             files: {},

@@ -1,7 +1,7 @@
 import { FLASH_HOLD_HINT } from '../checks/budget'
 import { classifyIssue, issueValue } from '../checks/codes'
 import { currentBundle } from '../compile'
-import { BundleBinary, currentBinary, EngineIssue, loadBundle } from '../engine'
+import { BundleBinary, currentBinary, disposeLoad, EngineIssue, loadBundle } from '../engine'
 import { readNameplate } from '../palette/state'
 import { quotedList } from '../util/text'
 import { CycleMotion, PALETTE_TRACK_PREFIX, everyChoices } from './types'
@@ -30,7 +30,9 @@ function flashIn(issues: EngineIssue[]): FlashFound | null {
 
 function flashOf(files: Record<string, string>): FlashFound | null {
     try {
-        return flashIn(loadBundle(files).issues)
+        const loaded = loadBundle(files)
+        disposeLoad(loaded)
+        return flashIn(loaded.issues)
     } catch (error) {
         console.error('[polyplus_nameplate] flash check failed', error)
         return null

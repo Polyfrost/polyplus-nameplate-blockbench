@@ -1,3 +1,4 @@
+import { engineAnchors, offeredBy } from '../engine'
 import { bodyOptions, currentNode, EDGE_LABELS, flag, followPart, list, pairField, paintPicture, percentOf, PERCENT, rangesPart, textureOptions, whole, WHOLE_TAG } from './motionForm'
 import { limited, limitedDecimals, limitedPair, limitedValue, tell } from '../elements/limits'
 import { layerNodes } from '../elements/nodes'
@@ -23,7 +24,7 @@ const FOLDED_SECTIONS = ['layer.emitter.bursts', 'layer.emitter.more_motion']
 const rateOn = (result: Values) => !!result?.rate_on
 const wobbleOn = (result: Values) => !!result?.wobble_on
 const fadeOn = (result: Values) => !!result?.fade_on
-const anchors = () => labeled(EDGE_ANCHORS, ANCHOR_LABELS)
+const anchors = () => labeled(offeredBy(EDGE_ANCHORS, engineAnchors()), ANCHOR_LABELS)
 
 const emitterRanges = widthRanges({
     prefix: 'bp',

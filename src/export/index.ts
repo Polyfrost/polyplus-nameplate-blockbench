@@ -1,9 +1,9 @@
-import { currentBundle } from '../compile'
+import { currentBundle, finishFullChecks } from '../compile'
 import { describe } from '../engine'
 import { CompiledBundle, FORMAT_ID } from '../model'
 import { Problem, projectProblems } from './issues'
 import { registerValidator, unregisterValidator } from './validator'
-import { buildZip, zipAvailable } from './zip'
+import { buildZip } from './zip'
 import { withToneHints } from '../material/tone'
 import { reviewerNotes } from '../checks'
 import { archiveProblem, archiveSize, REPORT_FILE, reportJson } from '../checks/report'
@@ -163,16 +163,13 @@ function openExportDialog(bundle: CompiledBundle, warnings: Problem[]) {
 }
 
 export function exportBundle() {
+    finishFullChecks()
     const problems = projectProblems()
     if (problems.errors.length > 0) {
         showIssues(problems.errors)
         return
     }
     const bundle = currentBundle()
-    if (!zipAvailable()) {
-        showMessage("This Blockbench version can't make zip files. Update Blockbench.")
-        return
-    }
     openExportDialog(bundle, problems.warnings)
 }
 
@@ -210,13 +207,10 @@ async function saveCovers(preview: NameplatePreview, scale: number, name: string
 }
 
 export function exportCovers() {
+    finishFullChecks()
     const problems = projectProblems()
     if (problems.errors.length > 0) {
         showIssues(problems.errors)
-        return
-    }
-    if (!zipAvailable()) {
-        showMessage("This Blockbench version can't make zip files. Update Blockbench.", COVERS_TITLE)
         return
     }
     const bundle = currentBundle()
@@ -251,6 +245,7 @@ export function exportCovers() {
 }
 
 function compileZip(): Promise<Blob> {
+    finishFullChecks()
     const problems = projectProblems()
     if (problems.errors.length > 0) {
         showIssues(problems.errors)

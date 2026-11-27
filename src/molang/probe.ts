@@ -1,5 +1,5 @@
 import { issueName, issueValue } from '../checks/codes'
-import { EngineIssue, loadBundle } from '../engine'
+import { disposeLoad, EngineIssue, loadBundle } from '../engine'
 import { FIELD_QUERIES, NAMEPLATE_FUNCTIONS, NAMEPLATE_QUERIES, TEXT_QUERIES } from './catalog'
 import { blockbenchMisreads, withoutNamedNumbers } from './expression'
 
@@ -23,7 +23,6 @@ function probeFiles(source: string, use: MolangUse, params: Record<string, numbe
     const manifest = {
         format: 1,
         id: 'molang_probe',
-        requires: ['canvas'],
         fps: 10,
         loop: 20,
         params,
@@ -91,11 +90,32 @@ function unexpectedText(issue: EngineIssue, at: string): string {
     return `This formula has ${found} where it needs ${expected}${at}.`
 }
 
+const NAMED_SUBJECTS: Readonly<Record<string, string>> = {
+    molang_unknown_query: 'query',
+    molang_query_place: 'query',
+    molang_unknown_math: 'function',
+    molang_arguments: 'function',
+    molang_unknown_function: 'name',
+    molang_unknown_name: 'name',
+    molang_uncalled: 'name',
+    molang_not_query: 'name',
+    molang_assign: 'name',
+    molang_variable_name: 'name',
+    molang_character: 'character',
+    molang_unknown_param: 'param',
+    molang_unexpected: 'found',
+}
+
+const LIMITED: ReadonlySet<string> = new Set(['molang_cost', 'molang_too_big', 'molang_too_deep', 'molang_too_long', 'molang_variables'])
+
 function codedMolangText(issue: EngineIssue, use: MolangUse, at: string): string | null {
     const name = issueName(issue, 'name') ?? ''
     const query = issueName(issue, 'query') ?? ''
     const fn = issueName(issue, 'function') ?? ''
     const limit = issueValue(issue, 'limit') ?? 0
+    const subject = NAMED_SUBJECTS[issue.code ?? '']
+    if (subject && !issueName(issue, subject)) return null
+    if (LIMITED.has(issue.code ?? '') && issueValue(issue, 'limit') === null) return null
     switch (issue.code) {
         case 'molang_unknown_query': {
             const guess = closest(query, NAMEPLATE_QUERIES.map((entry) => entry.id))
@@ -162,7 +182,11 @@ function codedMolangText(issue: EngineIssue, use: MolangUse, at: string): string
 }
 
 export function molangIssueText(issue: EngineIssue, use: MolangUse, source?: string): string {
-    return codedMolangText(issue, use, nearby(source, issueValue(issue, 'column'))) ?? sentence(issue.message.trim().replace(COLUMN_SUFFIX, ''))
+    const coded = codedMolangText(issue, use, nearby(source, issueValue(issue, 'column')))
+    if (coded) return coded
+    const message = issue.message.trim().replace(COLUMN_SUFFIX, '')
+    if (!message) return "This formula can't be used. Check it."
+    return issue.code ? sentence(`This formula ${message}`) : sentence(message)
 }
 
 function trackPrefix(use: MolangUse): string {
@@ -175,6 +199,7 @@ function probe(source: string, use: MolangUse, params: Record<string, number>): 
     if (cached) return cached
     const prefix = trackPrefix(use)
     const loaded = loadBundle(probeFiles(source, use, params))
+    disposeLoad(loaded)
     const seen = new Set<string>()
     const result: ProbeFinding[] = []
     for (const issue of loaded.issues) {

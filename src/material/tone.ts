@@ -1,4 +1,4 @@
-import { BundleBinary, layerLeft, layerTop, lineBlock, loadBundle } from '../engine'
+import { BundleBinary, disposeLoad, layerLeft, layerTop, lineBlock, loadBundle } from '../engine'
 import { luminance, rgbHex } from '../palette/color'
 import { stringifyJson } from '../util/bundleJson'
 
@@ -44,38 +44,42 @@ export function toneHints(files: Record<string, string>, binary: BundleBinary, o
     }
     if (smooth.size === 0) return result
     const loaded = loadBundle(files, binary)
-    const preview = loaded.preview ?? (only === undefined ? null : loaded.draft?.() ?? null)
-    if (!preview) return result
-    const block = lineBlock(NAME_WIDTH, 0, NAME_WIDTH)
-    const samples = new Map<string, Set<number>>()
-    for (const variant of preview.variants) {
-        const swaps: Record<string, string> = manifest?.variants?.[variant]?.swap ?? {}
-        for (let frame = 0; frame < preview.loop; frame++) {
-            for (const layer of preview.paint(variant, block, frame, 0)) {
-                const slot = order[layer.index]
-                const id = slot === undefined ? undefined : (swaps[slot] ?? slot)
-                const material = id === undefined ? undefined : smooth.get(id)
-                if (!material || layer.rasterWidth <= 0) continue
-                const left = layerLeft(layer)
-                const top = layerTop(layer)
-                const into = samples.get(material) ?? new Set<number>()
-                samples.set(material, into)
-                for (let y = 0; y < LINE_HEIGHT; y++) {
-                    for (let x = 0; x < NAME_WIDTH; x++) {
-                        const rx = layer.mirrorX ? layer.rasterWidth - 1 - (x - left) : x - left
-                        const ry = y - top
-                        if (rx < 0 || ry < 0 || rx >= layer.rasterWidth || ry >= layer.rasterHeight) continue
-                        const p = (ry * layer.rasterWidth + rx) * 4
-                        const alpha = Math.round((layer.rgba[p + 3] * layer.opacity) / 255)
-                        if (alpha === 0) continue
-                        into.add(flatten(layer.rgba[p], layer.rgba[p + 1], layer.rgba[p + 2], alpha, layer.blend === 'additive'))
+    try {
+        const preview = loaded.preview ?? (only === undefined ? null : loaded.draft?.() ?? null)
+        if (!preview) return result
+        const block = lineBlock(NAME_WIDTH, 0, NAME_WIDTH)
+        const samples = new Map<string, Set<number>>()
+        for (const variant of preview.variants) {
+            const swaps: Record<string, string> = manifest?.variants?.[variant]?.swap ?? {}
+            for (let frame = 0; frame < preview.loop; frame++) {
+                for (const layer of preview.paint(variant, block, frame, 0)) {
+                    const slot = order[layer.index]
+                    const id = slot === undefined ? undefined : (swaps[slot] ?? slot)
+                    const material = id === undefined ? undefined : smooth.get(id)
+                    if (!material || layer.rasterWidth <= 0) continue
+                    const left = layerLeft(layer)
+                    const top = layerTop(layer)
+                    const into = samples.get(material) ?? new Set<number>()
+                    samples.set(material, into)
+                    for (let y = 0; y < LINE_HEIGHT; y++) {
+                        for (let x = 0; x < NAME_WIDTH; x++) {
+                            const rx = layer.mirrorX ? layer.rasterWidth - 1 - (x - left) : x - left
+                            const ry = y - top
+                            if (rx < 0 || ry < 0 || rx >= layer.rasterWidth || ry >= layer.rasterHeight) continue
+                            const p = (ry * layer.rasterWidth + rx) * 4
+                            const alpha = Math.round((layer.rgba[p + 3] * layer.opacity) / 255)
+                            if (alpha === 0) continue
+                            into.add(flatten(layer.rgba[p], layer.rgba[p + 1], layer.rgba[p + 2], alpha, layer.blend === 'additive'))
+                        }
                     }
                 }
             }
         }
+        for (const [material, colors] of samples) if (colors.size > 0) result[material] = pick(colors)
+        return result
+    } finally {
+        disposeLoad(loaded)
     }
-    for (const [material, colors] of samples) if (colors.size > 0) result[material] = pick(colors)
-    return result
 }
 
 export function withToneHints(files: Record<string, string>, binary: BundleBinary = {}): Record<string, string> {

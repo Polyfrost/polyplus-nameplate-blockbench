@@ -7,7 +7,6 @@ import { channelName } from '../animate/checks'
 import { badgeNode } from '../badge/node'
 import { readGroups, readLayers } from '../elements'
 import { DEFAULT_FPS } from '../format'
-import { isBaseText, isParamChannel } from '../material/params'
 import { BADGE_TARGET, LOOP_ANIMATION, PLATE_TARGET } from '../model'
 import { goMode } from '../navigate'
 import { plateNode } from '../plate'
@@ -97,7 +96,6 @@ function channelLabel(group: KeyGroup): string {
 function formulaMessages(group: KeyGroup, params: Record<string, number>): string[] {
     if (group.constant) return checkConstantFormula(group.source, params)
     if (FORMULA_CHANNELS.has(group.channel)) return checkMolang(group.source, 'channel', params)
-    if (isParamChannel(group.channel)) return isBaseText(group.source) ? [] : ["this keyframe takes a number or 'base', not a formula. Type one of those."]
     return ['this keyframe takes a plain number, not a formula. Type a number.']
 }
 

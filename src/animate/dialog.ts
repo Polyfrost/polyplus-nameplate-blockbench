@@ -1,6 +1,5 @@
 import { limited, limitedValue } from '../elements/limits'
 import { currentFps, currentLoopFrames, secondsText, snappingFor } from '../format'
-import { REACTIONS } from '../model'
 import { animationFrames, findLoopAnimation } from '../util/animation'
 import { syncScheduleMarkers } from './markers'
 import { readNameplate } from '../palette/state'
@@ -18,7 +17,8 @@ import {
     MODE_NAMES,
     Plays,
     REACTION_MODES,
-    REACTION_NAMES,
+    reactionChoices,
+    reactionLabel,
     REDUCED_MODES,
     REDUCED_NAMES,
     isReducedMode,
@@ -205,7 +205,7 @@ export function openAnimationDialog(animation: any) {
     const share = previous.schedule ? previous.schedule : OWN_SCHEDULE
     const shareOptions = partners(animation)
     if (!(share in shareOptions)) shareOptions[share] = `Yes, schedule '${share}'`
-    const reactionOptions = optionsOf(REACTIONS, REACTION_NAMES)
+    const reactionOptions = Object.fromEntries(reactionChoices().map((reaction) => [reaction, reactionLabel(reaction)]))
     const modeOptions = optionsOf(REACTION_MODES, MODE_NAMES)
     const reducedOptions = optionsOf(REDUCED_MODES, REDUCED_NAMES)
 

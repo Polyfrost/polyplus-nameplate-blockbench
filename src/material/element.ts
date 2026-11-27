@@ -1,71 +1,26 @@
 import { defineEffectProperties } from '../kinds/effect'
 import { defineElementType, ElementType, layerMenuItems } from '../elements/classes'
 import { channelSet } from '../elements/channels'
-import { allParamNames, effectReads, isParamChannel, paramChannel, paramLabel, paramOfChannel } from './params'
-import { allAnimations } from '../util/animation'
+import { isParamChannel } from './params'
 import { EFFECT_CHANNELS, EFFECT_TYPE } from './types'
 
-function paramConfig(channel: string): Record<string, unknown> {
-    const name = paramOfChannel(channel) ?? channel
-    return {
-        get name() {
-            return `Setting: ${paramLabel(name)}`
-        },
-        mutable: true,
-        transform: true,
-        max_data_points: 1,
-        condition: (animator: any) => {
-            if (!animator || !Array.isArray(animator[channel])) return false
-            return effectReads(OutlinerNode.uuids[animator.uuid]).includes(name)
-        },
-    }
-}
+const droppedTracks = new Set<string>()
 
-function paramAwareChannels(base: Record<string, any>): Record<string, any> {
-    return new Proxy(base, {
-        get(target, key, receiver) {
-            if (typeof key === 'string' && isParamChannel(key) && !Object.prototype.hasOwnProperty.call(target, key)) target[key] = paramConfig(key)
-            return Reflect.get(target, key, receiver)
-        },
-    })
-}
-
-function ensureArray(animator: any, channel: string) {
-    void animator.channels[channel]
-    if (Array.isArray(animator[channel])) return
-    const vue = (globalThis as any).Vue
-    if (typeof vue?.set === 'function') vue.set(animator, channel, [])
-    else animator[channel] = []
-}
-
-let animatorClass: any = null
-
-export function syncEffectAnimator(animator: any) {
-    if (!animatorClass || !(animator instanceof animatorClass)) return
-    for (const name of effectReads(OutlinerNode.uuids[animator.uuid])) ensureArray(animator, paramChannel(name))
-}
-
-export function syncEffectParamChannels() {
-    if (!animatorClass) return
-    const channels = animatorClass.prototype.channels
-    for (const name of allParamNames()) void channels[paramChannel(name)]
-    for (const animation of allAnimations()) {
-        for (const animator of Object.values<any>(animation?.animators ?? {})) syncEffectAnimator(animator)
-    }
-}
-
-function withParamKeyframes(Base: any): any {
+function withoutParamKeyframes(Base: any): any {
     return class EffectAnimator extends Base {
         addKeyframe(data: any, uuid?: string) {
-            if (isParamChannel(data?.channel)) ensureArray(this, data.channel)
-            return super.addKeyframe(data, uuid)
-        }
-
-        createKeyframe(value: any, time: any, channel: any, undo: any, select: any) {
-            if (isParamChannel(channel)) ensureArray(this, channel)
-            return super.createKeyframe(value, time, channel, undo, select)
+            if (!isParamChannel(data?.channel)) return super.addKeyframe(data, uuid)
+            const animation = String((this as any).animation?.name ?? '')
+            droppedTracks.add(`${data.channel} keyframes on ${String((this as any).name ?? '')} in '${animation}'`)
+            return undefined
         }
     }
+}
+
+export function takeDroppedParamTracks(): string[] {
+    const tracks = Array.from(droppedTracks)
+    droppedTracks.clear()
+    return tracks
 }
 
 export type EffectType = ElementType
@@ -75,20 +30,17 @@ export function defineEffectType(): EffectType {
         type: EFFECT_TYPE,
         title: 'Nameplate effect',
         icon: 'auto_awesome',
-        channels: paramAwareChannels(channelSet(EFFECT_CHANNELS)),
-        extendAnimator: withParamKeyframes,
-        onSelectAnimator: syncEffectAnimator,
+        channels: channelSet(EFFECT_CHANNELS),
+        extendAnimator: withoutParamKeyframes,
         hideable: true,
         menu: layerMenuItems(),
         define: defineEffectProperties,
     })
-    animatorClass = result.animator
     return {
         type: result.type,
         animator: result.animator,
         dispose() {
             result.dispose()
-            animatorClass = null
         },
     }
 }

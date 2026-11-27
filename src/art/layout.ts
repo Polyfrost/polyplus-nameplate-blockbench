@@ -1,4 +1,3 @@
-import * as EngineModule from '../../engine/PolyPlus-nameplate-engine.js'
 import { BODY_TYPE, BodyArtData, BodyData, LayerData, NAME_MASK, ProjectSnapshot, SPRITE_TYPE, SpriteAnchor, SpriteData } from '../model'
 import { pictureStem } from '../palette/ids'
 import { readSprites } from '../palette/sprites'
@@ -6,26 +5,13 @@ import { presentIntegerAtLeast } from '../util/num'
 import { disposeAllSafe } from '../util/teardown'
 import { findTexture } from '../util/texture'
 
-const api = EngineModule.org.polyfrost.polyplus.nameplate.engine.js
-
 export const AT_PROPERTY = 'at'
 export const ART_PROPERTY = 'art'
 export const NO_AT = -1
 
-function engineList(read: () => ArrayLike<string>, fallback: string[]): string[] {
-    try {
-        const list = Array.from(read())
-        return list.length > 0 ? list : fallback
-    } catch {
-        return fallback
-    }
-}
-
-export const SPRITE_ANCHORS: string[] = engineList(() => api.NameplateLayout.anchors, [
-    'top_left', 'top', 'top_right', 'left', 'right', 'bottom_left', 'bottom', 'bottom_right', 'name_left', 'name_right',
-])
-const AT_ANCHORS: string[] = engineList(() => api.NameplateLayout.atAnchors, ['top', 'left', 'right', 'bottom'])
-const NAME_ANCHORS: string[] = engineList(() => api.NameplateLayout.nameAnchors, ['name_left', 'name_right'])
+export const SPRITE_ANCHORS: string[] = ['top_left', 'top', 'top_right', 'left', 'right', 'bottom_left', 'bottom', 'bottom_right', 'name_left', 'name_right']
+const AT_ANCHORS: string[] = ['top', 'left', 'right', 'bottom']
+const NAME_ANCHORS: string[] = ['name_left', 'name_right']
 
 export function isNameAnchor(anchor: unknown): boolean {
     return typeof anchor === 'string' && NAME_ANCHORS.includes(anchor)
@@ -93,14 +79,6 @@ export function artFromJson(value: unknown): (Omit<BodyArtData, 'texture'> & { s
     if (!art) return null
     const { texture, ...rest } = art
     return { ...rest, sprite: texture }
-}
-
-export function usesLayout(layers: LayerData[]): boolean {
-    return layers.some((layer) => {
-        if (layer.kind === 'body') return !!layer.art || !!layer.of
-        if (layer.kind === 'sprite') return isNameAnchor(layer.anchor) || (takesAt(layer.anchor) && atValue(layer.at) !== null) || !!layer.follow || layer.of === NAME_MASK
-        return false
-    })
 }
 
 export function maskTarget(layer: LayerData, resolve: (reference: string) => string | undefined): string | null | undefined {

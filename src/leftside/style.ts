@@ -70,6 +70,7 @@ ul.np-cost-details > li.np-over, ul.np-cost-details > li.np-over .np-cost-note {
 .np-shots { display: flex; flex-wrap: wrap; gap: 6px; padding: 2px 10px; }
 .np-shots button { display: inline-flex; align-items: center; gap: 4px; }
 .np-try .bar.slider_input_combo { padding: 0 10px; }
+.np-try-level > label { display: block; padding: 4px 10px 0; }
 `
 
 let removeElement: (() => void) | null = null
